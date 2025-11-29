@@ -17,7 +17,6 @@ import { useTermsAcceptance } from "./hooks/useTermsAcceptance";
 import AnimatedSplash from "./components/AnimatedSplash";
 import AskJoule from "./components/AskJoule";
 import JouleFab from "./components/JouleFab";
-import ModeSwitcher from "./components/ModeSwitcher";
 import ModeToggle from "./components/ModeToggle";
 import { ModeProvider, useMode } from "./contexts/ModeContext";
 import { AIMode } from "./components/AIMode";
@@ -702,7 +701,6 @@ function AppInner() {
           >
             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
           </button>
-          <ModeSwitcher />
         </div>
       </header>
 
