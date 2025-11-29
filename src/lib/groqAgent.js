@@ -1149,7 +1149,7 @@ async function buildMinimalContext(
     }
   }
 
-  // Also check for short cycling or system performance questions even if not explicitly diagnostic
+  // Also check for short cycling, system performance, or efficiency questions
   const isShortCyclingQuestion =
     lowerQuestion.includes("short cycling") ||
     lowerQuestion.includes("short cycle") ||
@@ -1158,15 +1158,33 @@ async function buildMinimalContext(
     (lowerQuestion.includes("bill") &&
       (lowerQuestion.includes("high") || lowerQuestion.includes("expensive")));
 
-  if (isShortCyclingQuestion) {
+  // Check for efficiency/home performance questions
+  const isEfficiencyQuestion =
+    lowerQuestion.includes("efficiency") ||
+    lowerQuestion.includes("home.*efficiency") ||
+    lowerQuestion.includes("energy.*efficiency") ||
+    lowerQuestion.includes("hers") ||
+    lowerQuestion.includes("energy.*rating") ||
+    lowerQuestion.includes("home.*performance") ||
+    lowerQuestion.includes("building.*performance") ||
+    lowerQuestion.includes("thermal.*performance") ||
+    (lowerQuestion.includes("how.*efficient") || lowerQuestion.includes("how efficient"));
+
+  if (isShortCyclingQuestion || isEfficiencyQuestion) {
     const csvDiagnostics = getCSVDiagnosticsData();
     if (csvDiagnostics && csvDiagnostics.hasData) {
-      context += `\n\nCSV ANALYSIS DATA (from System Performance Analyzer):\n`;
+      context += `\n\nCSV ANALYSIS DATA (from System Performance Analyzer - REAL MEASURED DATA):\n`;
+      context += `This is actual measured data from your thermostat CSV upload, not estimates.\n`;
       if (csvDiagnostics.latestAnalysis) {
         const analysis = csvDiagnostics.latestAnalysis;
         context += `Latest analysis results:\n`;
         if (analysis.heatLossFactor) {
-          context += `- Heat Loss Factor: ${analysis.heatLossFactor.toLocaleString()} BTU/hr per °F\n`;
+          context += `- Heat Loss Factor (MEASURED): ${analysis.heatLossFactor.toLocaleString()} BTU/hr per °F\n`;
+          context += `  This is the actual measured heat loss from your thermostat data, not a calculation.\n`;
+        }
+        if (analysis.balancePoint !== undefined && analysis.balancePoint !== -99) {
+          context += `- Balance Point (MEASURED): ${analysis.balancePoint.toFixed(1)}°F\n`;
+          context += `  This is the actual outdoor temperature where aux heat first engaged in your data.\n`;
         }
         if (analysis.shortCycling !== undefined) {
           context += `- Short Cycling Detected: ${
