@@ -13,6 +13,7 @@ import {
   calculateHeatLoss,
   formatHeatLossResponse,
 } from "../../utils/calculatorEngines";
+import { calculateBalancePoint } from "../../utils/balancePointCalculator";
 import {
   handleSettingCommand,
   handlePresetCommand,
@@ -348,18 +349,29 @@ export function useAskJoule({
       if (type === "balancePoint") {
         // Calculate from user settings
         try {
-          const { calculateBalancePoint } = require("../../utils/balancePointCalculator");
-          const result = calculateBalancePoint(userSettings);
-          if (result && result.balancePoint !== null) {
-            setOutput({ message: `Your balance point is ${result.balancePoint.toFixed(1)}°F. This is the outdoor temperature where your heat pump output equals your building's heat loss.`, status: "info" });
+          // calculateBalancePoint always returns a result with defaults, so it should never be null
+          const result = calculateBalancePoint(userSettings || {});
+          
+          if (result && result.balancePoint !== null && isFinite(result.balancePoint)) {
+            const message = `Your balance point is ${result.balancePoint.toFixed(1)}°F. This is the outdoor temperature where your heat pump output equals your building's heat loss.`;
+            setOutput({ message, status: "info" });
             if (speak) speak(`Balance point is ${Math.round(result.balancePoint)} degrees`);
+            return true;
+          } else {
+            // If balance point is null, it means the calculation couldn't find a crossover
+            // This can happen with extremely oversized or undersized systems
+            const message = `I calculated your balance point, but it's outside the normal range. Your heat loss factor is ${result?.heatLossFactor?.toLocaleString() || 'unknown'} BTU/hr per °F. This might indicate your system is very oversized or undersized. Check your system capacity and home details in Settings.`;
+            setOutput({ message, status: "info" });
+            if (speak) speak("Balance point calculation completed, but the result is outside normal range. Check your system settings.");
             return true;
           }
         } catch (err) {
-          console.warn("Balance point calculation failed:", err);
+          console.error("Balance point calculation failed:", err);
+          const errorMessage = `Balance point calculation error: ${err.message}. Please check your system settings in Settings.`;
+          setOutput({ message: errorMessage, status: "error" });
+          if (speak) speak("I encountered an error calculating your balance point. Please check your system settings.");
+          return true;
         }
-        setOutput({ message: "Balance point calculation requires system settings. Please configure your heat pump capacity and home details in Settings.", status: "info" });
-        return true;
       }
       
       if (type === "yesterdayCost") {
