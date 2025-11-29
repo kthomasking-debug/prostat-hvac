@@ -28,9 +28,12 @@ export function calculateBalancePoint(userSettings = {}) {
   } = userSettings;
 
   // Calculate building heat loss rate (BTU/hr per °F difference)
-  const volume = squareFeet * ceilingHeight;
-  const baseHeatLossPerDegF = volume * 0.018; // Base factor for heat loss
-  const btuLossPerDegF = baseHeatLossPerDegF * insulationLevel;
+  // Use standard ASHRAE-based calculation: base BTU/sqft at 70°F delta-T, then divide by 70 to get per-degree rate
+  const BASE_BTU_PER_SQFT_AT_70F = 22.67; // Standard base heat loss at 70°F delta-T
+  const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1; // Adjust for ceiling height (8ft = 1.0)
+  const baseHeatLossAt70F = squareFeet * BASE_BTU_PER_SQFT_AT_70F * ceilingMultiplier * insulationLevel;
+  // Convert to BTU/hr per °F: divide by 70°F delta-T
+  const btuLossPerDegF = baseHeatLossAt70F / 70;
 
   // Heat pump capacity derating with temperature
   // At 47°F, HP operates at rated capacity. Below that, capacity decreases
