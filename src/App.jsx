@@ -41,8 +41,6 @@ function AppInner() {
   });
   // State for the "More" menu
   const [showMoreMenu, setShowMoreMenu] = React.useState(false);
-  // State for desktop tools dropdown
-  const [showToolsDropdown, setShowToolsDropdown] = useState(false);
   // State for Ask Joule modal
   const [isJouleModalOpen, setIsJouleModalOpen] = useState(false);
 
@@ -694,37 +692,6 @@ function AppInner() {
               {route.name}
             </NavLink>
           ))}
-          {/* Tools Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowToolsDropdown(!showToolsDropdown)}
-              className="px-3 py-2 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center"
-            >
-              Tools <ChevronDown className="w-4 h-4 ml-1" />
-            </button>
-            {showToolsDropdown && (
-              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg z-20">
-                {routes
-                  .filter((r) => r.isTool)
-                  .map((route) => (
-                    <NavLink
-                      key={route.path}
-                      to={route.path}
-                      onClick={() => {
-                        setShowToolsDropdown(false);
-                        // Switch to traditional mode when navigating from AI mode
-                        if (mode === "ai") {
-                          setMode("traditional");
-                        }
-                      }}
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      {route.name}
-                    </NavLink>
-                  ))}
-              </div>
-            )}
-          </div>
         </nav>
 
         <div className="flex items-center space-x-2">
