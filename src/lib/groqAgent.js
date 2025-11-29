@@ -1903,7 +1903,7 @@ export async function answerWithRAG(
     { role: "system", content: MINIMAL_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `${context}\n\nUser question: ${userQuestion}`,
+      content: `${context}\n\nUser question: ${userQuestion}\n\nCRITICAL: Summarize to 3 sentences or 100 words maximum. Output ONLY the summary.`,
     },
   ];
 
