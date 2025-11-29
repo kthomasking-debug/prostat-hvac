@@ -377,11 +377,30 @@ export async function answerWithAgent(
     };
   }
 
-  // Get model from options or localStorage, fallback to default
+  // Get model from options or localStorage, with dynamic best model selection
   // Check for automatic fallback/retry logic
   let modelName = model;
   if (!modelName && typeof window !== "undefined") {
-    const storedModel = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
+    let storedModel = localStorage.getItem("groqModel");
+    
+    // If no stored model or using default, try to get best model dynamically
+    if (!storedModel || storedModel === "llama-3.3-70b-versatile") {
+      try {
+        const apiKey = localStorage.getItem("groqApiKey");
+        if (apiKey) {
+          const { getBestModel } = await import("./groqModels.js");
+          const bestModel = await getBestModel(apiKey);
+          if (bestModel) {
+            storedModel = bestModel;
+            localStorage.setItem("groqModel", bestModel);
+          }
+        }
+      } catch (error) {
+        console.warn("[groqAgent] Failed to get best model, using default:", error);
+      }
+    }
+    
+    storedModel = storedModel || "llama-3.3-70b-versatile";
     // Import dynamically to avoid circular dependencies
     const { getCurrentModel } = await import("./groqModelFallback.js");
     modelName = getCurrentModel(storedModel);
@@ -791,11 +810,30 @@ async function answerWithPlanning(
     },
   ];
 
-  // Get model from options or localStorage, fallback to default
+  // Get model from options or localStorage, with dynamic best model selection
   // Check for automatic fallback/retry logic
   let modelName = model;
   if (!modelName && typeof window !== "undefined") {
-    const storedModel = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
+    let storedModel = localStorage.getItem("groqModel");
+    
+    // If no stored model or using default, try to get best model dynamically
+    if (!storedModel || storedModel === "llama-3.3-70b-versatile") {
+      try {
+        const apiKey = localStorage.getItem("groqApiKey");
+        if (apiKey) {
+          const { getBestModel } = await import("./groqModels.js");
+          const bestModel = await getBestModel(apiKey);
+          if (bestModel) {
+            storedModel = bestModel;
+            localStorage.setItem("groqModel", bestModel);
+          }
+        }
+      } catch (error) {
+        console.warn("[groqAgent] Failed to get best model, using default:", error);
+      }
+    }
+    
+    storedModel = storedModel || "llama-3.3-70b-versatile";
     const { getCurrentModel } = await import("./groqModelFallback.js");
     modelName = getCurrentModel(storedModel);
   } else if (typeof window !== "undefined") {

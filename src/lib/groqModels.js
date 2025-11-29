@@ -37,6 +37,69 @@ export async function fetchGroqModels(apiKey) {
 }
 
 /**
+ * Finds the best available model based on priority (Brain Size > Speed)
+ * Dynamically selects the smartest Llama model available
+ * @param {string} apiKey - Groq API key
+ * @returns {Promise<string>} Best model ID or fallback default
+ */
+export async function getBestModel(apiKey) {
+  if (!apiKey || !apiKey.trim()) {
+    return "llama-3.3-70b-versatile"; // Default fallback if no API key
+  }
+
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.warn("[groqModels] Failed to fetch models, using default");
+      return "llama-3.3-70b-versatile";
+    }
+
+    const data = await response.json();
+    const models = data.data || [];
+
+    // Priority list (regex patterns) - ordered by intelligence (Brain Size > Speed)
+    const priorities = [
+      /llama-3\.3-70b/i, // Gold Standard - most powerful
+      /llama-3\.2-90b/i, // Large vision/reasoning model
+      /llama-3\.1-70b/i, // Fallback high-quality
+      /llama-3\.3-\d+b/i, // Any 3.3 model (future-proof)
+      /llama-3\.2-\d+b/i, // Any 3.2 model
+      /mixtral-8x7b/i, // Strong alternative
+      /llama-3\.1-8b/i, // Last resort (fast but less capable)
+    ];
+
+    // Try each priority pattern
+    for (const pattern of priorities) {
+      const match = models.find((m) => pattern.test(m.id));
+      if (match) {
+        console.log(`[groqModels] Selected best model: ${match.id}`);
+        return match.id;
+      }
+    }
+
+    // Safety net: if no priority match, try to find any Llama 3.x model
+    const llama3Match = models.find((m) => /llama-3/i.test(m.id));
+    if (llama3Match) {
+      console.log(`[groqModels] Selected Llama 3 model: ${llama3Match.id}`);
+      return llama3Match.id;
+    }
+
+    // Final fallback
+    console.warn("[groqModels] No suitable model found, using default");
+    return "llama-3.3-70b-versatile";
+  } catch (error) {
+    console.error("[groqModels] Failed to fetch models:", error);
+    return "llama-3.3-70b-versatile"; // Default fallback
+  }
+}
+
+/**
  * Suggests a good model from the available models
  * Prioritizes fast models for better user experience
  * @param {Array} models - Array of model objects from Groq API

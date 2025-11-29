@@ -29,6 +29,7 @@ import {
   suggestModel,
   formatModelLabel,
   getModelDescription,
+  getBestModel,
 } from "../lib/groqModels";
 import { fullInputClasses } from "../lib/uiClasses";
 import { DashboardLink } from "../components/DashboardLink";
@@ -813,14 +814,47 @@ const GroqApiKeyInput = () => {
 
         setAvailableModels(activeModels);
 
-        // If current model is not available, suggest a new one
+        // Use dynamic best model selection if no model is set or current model is unavailable
         const currentModelExists = activeModels.some((m) => m.id === model);
         if (!currentModelExists && activeModels.length > 0) {
-          const suggested = suggestModel(activeModels);
-          if (suggested) {
-            setModel(suggested);
-            localStorage.setItem("groqModel", suggested);
-            window.dispatchEvent(new Event("storage"));
+          // Try dynamic best model selection first
+          try {
+            const bestModel = await getBestModel(value);
+            if (bestModel) {
+              setModel(bestModel);
+              localStorage.setItem("groqModel", bestModel);
+              window.dispatchEvent(new Event("storage"));
+            } else {
+              // Fallback to suggestModel if getBestModel returns null
+              const suggested = suggestModel(activeModels);
+              if (suggested) {
+                setModel(suggested);
+                localStorage.setItem("groqModel", suggested);
+                window.dispatchEvent(new Event("storage"));
+              }
+            }
+          } catch (error) {
+            console.warn("[Settings] Failed to get best model, using suggestModel:", error);
+            // Fallback to suggestModel
+            const suggested = suggestModel(activeModels);
+            if (suggested) {
+              setModel(suggested);
+              localStorage.setItem("groqModel", suggested);
+              window.dispatchEvent(new Event("storage"));
+            }
+          }
+        } else if (!model || model === "llama-3.3-70b-versatile") {
+          // If using default, try to get best model dynamically
+          try {
+            const bestModel = await getBestModel(value);
+            if (bestModel && bestModel !== "llama-3.3-70b-versatile") {
+              setModel(bestModel);
+              localStorage.setItem("groqModel", bestModel);
+              window.dispatchEvent(new Event("storage"));
+            }
+          } catch (error) {
+            // Silently fail - keep default
+            console.warn("[Settings] Failed to get best model:", error);
           }
         }
       } catch (error) {
