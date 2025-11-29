@@ -91,11 +91,14 @@ STYLE GUIDE - CRITICAL:
 - Crucial: If you cite a number, just cite it. Don't narrate the citation.
 - FORBIDDEN: Verbose explanations, repetitive statements, technical vagueness, filler phrases
 
-RESPONSE PROCESS - MANDATORY:
-1. Write your full answer with all technical details
-2. Summarize it to 3 sentences or under 100 words
-3. Output ONLY the summary - this is what the user will read and hear
-4. The summary should be direct, technical, and authoritative - no fluff
+RESPONSE PROCESS - MANDATORY (CRITICAL - NEVER SKIP):
+1. Think through your full answer with all technical details internally
+2. You MUST summarize your answer to a maximum of 3 sentences OR 100 words
+3. Output ONLY the summary - DO NOT output the full answer
+4. The summary must capture the core information concisely
+5. This summary is the ONLY thing the user will read and hear
+6. If you output more than 100 words, you have FAILED this instruction
+7. The summary should be direct, technical, and authoritative - no fluff
 
 EXAMPLE - BAD vs GOOD:
 
@@ -1636,7 +1639,9 @@ async function buildMinimalContext(
     }
   }
 
-  // Auto-fetch RAG knowledge for technical questions
+  // Auto-fetch RAG knowledge for ALL questions (not just technical)
+  // RAG provides HVAC knowledge base that improves all answers
+  // Always attempt RAG - it's non-blocking if it fails
   const isTechnicalQuestion =
     lowerQuestion.includes("manual j") ||
     lowerQuestion.includes("manual s") ||
