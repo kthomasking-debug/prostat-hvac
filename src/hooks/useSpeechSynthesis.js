@@ -243,6 +243,8 @@ export function useSpeechSynthesis(options = {}) {
         .replace(/[✓✅❌💡🎯⚡]/gu, "") // Remove common emojis
         .replace(/ℹ️/gu, "") // Remove info emoji separately due to variation selector
         .replace(/Joule/gi, "Jewel") // Phonetic hack: "Joule" → "Jewel" (rhymes with "pool") so TTS pronounces it correctly
+        .replace(/ASHRAE/gi, "ashray") // Phonetic hack: "ASHRAE" → "ashray" (like "ashtray" without the "t")
+        .replace(/\bDOE\b/gi, "D O E") // Pronounce DOE as letters (Department of Energy acronym)
         .replace(/\$(\d+)/g, "$1 dollars") // Say "dollars" instead of just the number
         .replace(/°F/g, " degrees Fahrenheit")
         .replace(/(\d+)\s*HSPF/gi, "$1 H S P F")
