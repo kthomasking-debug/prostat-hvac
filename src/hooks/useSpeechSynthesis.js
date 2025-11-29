@@ -242,16 +242,28 @@ export function useSpeechSynthesis(options = {}) {
       const cleanText = text
         .replace(/[✓✅❌💡🎯⚡]/gu, "") // Remove common emojis
         .replace(/ℹ️/gu, "") // Remove info emoji separately due to variation selector
-        .replace(/Joule/gi, "Jool") // Phonetic hack: "Joule" → "Jool" (rhymes with "pool") so TTS pronounces it correctly
-        .replace(/ASHRAE/gi, "Ash Ray") // Phonetic hack: "ASHRAE" → "Ash Ray" (rhymes with "Trash Day" or "Stingray")
-        .replace(/\bDOE\b/gi, "D O E") // Pronounce DOE as letters (Department of Energy acronym)
-        .replace(/\bBTU\b/gi, "B T U") // Forces letter-by-letter pronunciation
-        .replace(/\bHSPF\b/gi, "H S P F") // Forces letter-by-letter pronunciation
+        // Phonetic hacks for correct pronunciation
+        .replace(/Joule/gi, "Jool") // "Joule" → "Jool" (rhymes with "pool")
+        .replace(/ASHRAE/gi, "Ash Ray") // "ASHRAE" → "Ash Ray" (rhymes with "Trash Day")
+        .replace(/\bISO\b/gi, "I S O") // Pronounce ISO as letters
+        .replace(/\bDOE\b/gi, "D O E") // Pronounce DOE as letters (Department of Energy)
+        .replace(/\bBTU\b/gi, "B T U") // Pronounce BTU as letters
+        .replace(/\bHSPF\b/gi, "H S P F") // Pronounce HSPF as letters
+        .replace(/\bSEER\b/gi, "S E E R") // Pronounce SEER as letters
+        .replace(/\bAFUE\b/gi, "A F U E") // Pronounce AFUE as letters
+        .replace(/\bCOP\b/gi, "C O P") // Coefficient of Performance
+        .replace(/\bEER\b/gi, "E E R") // Energy Efficiency Ratio
+        .replace(/\bNREL\b/gi, "N R E L") // National Renewable Energy Laboratory
+        .replace(/\bTMY3\b/gi, "T M Y 3") // Typical Meteorological Year 3
+        .replace(/\bHERS\b/gi, "H E R S") // Home Energy Rating System
+        .replace(/\bHVAC\b/gi, "H V A C") // Heating, Ventilation, Air Conditioning
         .replace(/\$(\d+)/g, "$1 dollars") // Say "dollars" instead of just the number
         .replace(/°F/g, " degrees Fahrenheit")
         .replace(/(\d+)\s*HSPF/gi, "$1 H S P F") // Handle HSPF with numbers (e.g., "9 HSPF")
-        .replace(/(\d+)\s*SEER/gi, "$1 S E E R")
-        .replace(/(\d+)\s*AFUE/gi, "$1 A F U E")
+        .replace(/(\d+)\s*SEER/gi, "$1 S E E R") // Handle SEER with numbers
+        .replace(/(\d+)\s*AFUE/gi, "$1 A F U E") // Handle AFUE with numbers
+        .replace(/(\d+)\s*COP/gi, "$1 C O P") // Handle COP with numbers
+        .replace(/(\d+)\s*EER/gi, "$1 E E R") // Handle EER with numbers
         .replace(/kBTU/gi, "thousand B T U")
         .replace(/sq\s*ft/gi, "square feet")
         .trim();
