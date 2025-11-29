@@ -18,6 +18,7 @@ export function useSpeechRecognition({
   const [error, setError] = useState(null);
   const manualStopRef = useRef(false);
   const restartCountRef = useRef(0);
+  const lastProcessedResultIndexRef = useRef(0);
   
   // Store callbacks in refs to avoid re-creating recognition on callback changes
   const onFinalRef = useRef(onFinal);
@@ -81,6 +82,9 @@ export function useSpeechRecognition({
     
     rec.onresult = (e) => {
       let agg = "";
+      let newFinalText = "";
+      
+      // Process all results for transcript display
       for (let i = 0; i < e.results.length; i++) {
         const chunk = e.results[i][0].transcript;
         agg += chunk;
@@ -91,9 +95,20 @@ export function useSpeechRecognition({
       const full = agg.trim();
       setTranscript(full);
       
+      // Extract only NEW final results (those after what we've already processed)
+      const lastProcessedIndex = lastProcessedResultIndexRef.current;
+      for (let i = lastProcessedIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          newFinalText += e.results[i][0].transcript;
+        }
+      }
+      
       const lastResult = e.results[e.results.length - 1];
-      if (lastResult && lastResult.isFinal) {
-        onFinalRef.current?.(full);
+      if (lastResult && lastResult.isFinal && newFinalText.trim()) {
+        // Update the last processed index
+        lastProcessedResultIndexRef.current = e.results.length;
+        // Pass only the NEW final text, not the entire accumulated transcript
+        onFinalRef.current?.(newFinalText.trim());
         if (autoStopOnFinal) {
           manualStopRef.current = true;
           try {
@@ -124,6 +139,7 @@ export function useSpeechRecognition({
     // Reset state for new listening session
     manualStopRef.current = false;
     restartCountRef.current = 0;
+    lastProcessedResultIndexRef.current = 0; // Reset result index tracking
     setError(null);
     setTranscript("");
     
