@@ -1180,14 +1180,17 @@ async function buildMinimalContext(
   // Check for efficiency/home performance questions
   const isEfficiencyQuestion =
     lowerQuestion.includes("efficiency") ||
-    lowerQuestion.includes("home.*efficiency") ||
-    lowerQuestion.includes("energy.*efficiency") ||
+    lowerQuestion.includes("home efficiency") ||
+    lowerQuestion.includes("energy efficiency") ||
     lowerQuestion.includes("hers") ||
-    lowerQuestion.includes("energy.*rating") ||
-    lowerQuestion.includes("home.*performance") ||
-    lowerQuestion.includes("building.*performance") ||
-    lowerQuestion.includes("thermal.*performance") ||
-    (lowerQuestion.includes("how.*efficient") || lowerQuestion.includes("how efficient"));
+    lowerQuestion.includes("energy rating") ||
+    lowerQuestion.includes("home performance") ||
+    lowerQuestion.includes("building performance") ||
+    lowerQuestion.includes("thermal performance") ||
+    /is.*my.*home.*efficient/i.test(lowerQuestion) ||
+    /how.*efficient/i.test(lowerQuestion) ||
+    /what.*my.*heat.*loss/i.test(lowerQuestion) ||
+    /heat.*loss.*factor/i.test(lowerQuestion);
 
   if (isShortCyclingQuestion || isEfficiencyQuestion) {
     const csvDiagnostics = getCSVDiagnosticsData();
