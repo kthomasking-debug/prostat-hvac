@@ -9,6 +9,7 @@ Added a **big, prominent mute button in the menu bar** that controls ALL voice/s
 ## 🎯 Features
 
 ### **Desktop View**
+
 - **Location:** Top-right header, between navigation and dark mode toggle
 - **Design:** Big blue button with icon + text
   - **Unmuted:** Blue background, Volume2 icon + "Voice" text
@@ -16,6 +17,7 @@ Added a **big, prominent mute button in the menu bar** that controls ALL voice/s
 - **Size:** `px-4 py-2` - prominent and easy to click
 
 ### **Mobile View**
+
 - **Location:** Same top header (visible on all screen sizes)
 - **Design:** Icon-only to save space
   - **Unmuted:** Blue button with Volume2 icon only
@@ -34,20 +36,20 @@ Added to `src/App.jsx`:
 // Global mute state for all speech/audio
 const [isMuted, setIsMuted] = useState(() => {
   try {
-    const saved = localStorage.getItem('globalMuted');
-    return saved === 'true';
+    const saved = localStorage.getItem("globalMuted");
+    return saved === "true";
   } catch {
     return false;
   }
 });
 
 const toggleMute = () => {
-  setIsMuted(prev => {
+  setIsMuted((prev) => {
     const newMuted = !prev;
     try {
-      localStorage.setItem('globalMuted', String(newMuted));
+      localStorage.setItem("globalMuted", String(newMuted));
       // Also sync with askJouleMuted for compatibility
-      localStorage.setItem('askJouleMuted', String(newMuted));
+      localStorage.setItem("askJouleMuted", String(newMuted));
     } catch {
       // Ignore storage errors
     }
@@ -59,6 +61,7 @@ const toggleMute = () => {
 ### **2. Synchronization**
 
 The mute button syncs with:
+
 - **`globalMuted`** - Main state
 - **`askJouleMuted`** - AskJoule component compatibility
 
@@ -71,11 +74,11 @@ Both are kept in sync via `localStorage`, so any component can read the mute sta
   onClick={toggleMute}
   className={`px-3 sm:px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
     isMuted
-      ? 'bg-red-500 hover:bg-red-600 text-white border-2 border-red-600'
-      : 'bg-blue-600 hover:bg-blue-700 text-white'
+      ? "bg-red-500 hover:bg-red-600 text-white border-2 border-red-600"
+      : "bg-blue-600 hover:bg-blue-700 text-white"
   }`}
-  aria-label={isMuted ? 'Unmute voice' : 'Mute voice'}
-  title={isMuted ? 'Voice MUTED - Click to unmute' : 'Voice ON - Click to mute'}
+  aria-label={isMuted ? "Unmute voice" : "Mute voice"}
+  title={isMuted ? "Voice MUTED - Click to unmute" : "Voice ON - Click to mute"}
 >
   {isMuted ? (
     <>
@@ -97,32 +100,35 @@ Both are kept in sync via `localStorage`, so any component can read the mute sta
 
 ### **Color States**
 
-| State | Background | Border | Text | Icon |
-|-------|-----------|--------|------|------|
-| **Voice ON** | Blue (`bg-blue-600`) | None | White | Volume2 (white) |
-| **MUTED** | Red (`bg-red-500`) | Red 2px (`border-red-600`) | White | VolumeX (white) |
+| State        | Background           | Border                     | Text  | Icon            |
+| ------------ | -------------------- | -------------------------- | ----- | --------------- |
+| **Voice ON** | Blue (`bg-blue-600`) | None                       | White | Volume2 (white) |
+| **MUTED**    | Red (`bg-red-500`)   | Red 2px (`border-red-600`) | White | VolumeX (white) |
 
 ### **Hover Effects**
+
 - **Voice ON:** `hover:bg-blue-700`
 - **MUTED:** `hover:bg-red-600`
 
 ### **Responsive Behavior**
 
-| Screen Size | Button Content | Padding |
-|------------|----------------|---------|
-| **Mobile** (`< 640px`) | Icon only | `px-3 py-2` |
-| **Desktop** (`≥ 640px`) | Icon + Text | `px-4 py-2` |
+| Screen Size             | Button Content | Padding     |
+| ----------------------- | -------------- | ----------- |
+| **Mobile** (`< 640px`)  | Icon only      | `px-3 py-2` |
+| **Desktop** (`≥ 640px`) | Icon + Text    | `px-4 py-2` |
 
 ---
 
 ## 📱 Visibility
 
 ### **Always Visible**
+
 - ✅ Desktop header
 - ✅ Mobile header
 - ✅ All pages (Home, Dashboard, Forecast, Budget, Agent, Settings, etc.)
 
 ### **Not Hidden**
+
 - Works in both Traditional and AI modes
 - Visible regardless of screen size
 - Always accessible with one click
@@ -132,6 +138,7 @@ Both are kept in sync via `localStorage`, so any component can read the mute sta
 ## 🔄 Persistence
 
 The mute state persists across:
+
 - ✅ Page refreshes
 - ✅ Browser sessions
 - ✅ Navigation between pages
@@ -146,10 +153,12 @@ The mute state persists across:
 ### **Affected Components**
 
 1. **AskJoule** (`src/components/AskJoule.jsx`)
+
    - Reads `askJouleMuted` from localStorage
    - Blocks all speech when muted
 
 2. **SmartThermostatDemo** (`src/pages/SmartThermostatDemo.jsx`)
+
    - Can be updated to read `globalMuted` from localStorage
    - Should block speech synthesis when muted
 
@@ -194,6 +203,7 @@ Speech synthesis blocked at source
 ## 📦 Files Modified
 
 1. **`src/App.jsx`**
+
    - Added `Volume2`, `VolumeX` icon imports
    - Added `isMuted` state and `toggleMute` function
    - Added mute button to header
@@ -208,11 +218,13 @@ Speech synthesis blocked at source
 ## 🎯 User Experience
 
 ### **Before**
+
 - ❌ No visible mute control
 - ❌ Had to dig into settings or close the app
 - ❌ Voice kept playing even when unwanted
 
 ### **After**
+
 - ✅ **Big, obvious mute button** in menu bar
 - ✅ **One-click mute/unmute** from anywhere
 - ✅ **Visual feedback** (red = muted, blue = voice on)
@@ -251,6 +263,7 @@ npm run deploy
 **You asked for:** A big mute button in the menu bar
 
 **You got:**
+
 - ✅ Prominent button in top header
 - ✅ Works on desktop and mobile
 - ✅ Blue when voice is on, red when muted
@@ -260,4 +273,3 @@ npm run deploy
 - ✅ Always visible
 
 **Ready to deploy!** 🎉
-

@@ -75,7 +75,24 @@ function parseMode(q) {
 }
 
 function parsePreset(q) {
-  const rePreset = /\b(sleep|away|home)\b(?:\s*(?:mode|preset))?/iu;
+  // Reject questions - if it starts with question words, it's NOT a preset command
+  if (
+    /^(how|what|why|when|where|who|which|can\s+i|should\s+i|do\s+i|does|is|are|will|would|could)\b/i.test(
+      q
+    )
+  ) {
+    return null;
+  }
+
+  // Reject queries about "my home" - these are questions, not preset commands
+  if (/\bmy\s+home'?s?\b/i.test(q)) {
+    return null;
+  }
+
+  // Match explicit preset commands like "I'm home", "home mode", "sleep mode"
+  // Use more specific patterns to avoid matching "home" in other contexts
+  const rePreset =
+    /(?:(?:i'm|im|i\s+am)\s+)?(sleep|away|home)\s*(?:mode|preset)?\s*$/iu;
   const m = q.match(rePreset);
   if (!m) return null;
   return {

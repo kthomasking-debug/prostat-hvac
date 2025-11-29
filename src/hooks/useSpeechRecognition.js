@@ -17,56 +17,84 @@ export function useSpeechRecognition({
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState(null);
   const manualStopRef = useRef(false);
-  const [restartCount, setRestartCount] = useState(0);
+  const restartCountRef = useRef(0);
+  
+  // Store callbacks in refs to avoid re-creating recognition on callback changes
+  const onFinalRef = useRef(onFinal);
+  const onInterimRef = useRef(onInterim);
+  const onErrorRef = useRef(onError);
+  
+  // Update refs when callbacks change
+  useEffect(() => { onFinalRef.current = onFinal; }, [onFinal]);
+  useEffect(() => { onInterimRef.current = onInterim; }, [onInterim]);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
 
+  // Initialize speech recognition once
   useEffect(() => {
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
+    
     setSupported(true);
     const rec = new SR();
     rec.lang = lang;
     rec.continuous = continuous;
     rec.interimResults = interim;
-    rec.onstart = () => setIsListening(true);
+    
+    rec.onstart = () => {
+      setIsListening(true);
+      setError(null);
+    };
+    
     rec.onend = () => {
       setIsListening(false);
       if (
         autoRestart &&
         !manualStopRef.current &&
-        restartCount < maxAutoRestarts
+        restartCountRef.current < maxAutoRestarts
       ) {
-        setRestartCount((c) => c + 1);
-        // brief delay to avoid rapid loop if permission denied
+        restartCountRef.current += 1;
+        // Brief delay to avoid rapid loop if permission denied
         setTimeout(() => {
           try {
-            rec.start();
+            if (!manualStopRef.current) {
+              rec.start();
+            }
           } catch {
             // Ignore recognition start errors
           }
         }, 400);
       }
     };
+    
     rec.onerror = (e) => {
       const code = e.error || "speech-error";
       setError(code);
-      onError?.(code);
+      onErrorRef.current?.(code);
       setIsListening(false);
+      
+      // Don't auto-restart on "not-allowed" (permission denied) or "aborted"
+      if (code === "not-allowed" || code === "aborted") {
+        manualStopRef.current = true;
+      }
     };
+    
     rec.onresult = (e) => {
       let agg = "";
       for (let i = 0; i < e.results.length; i++) {
         const chunk = e.results[i][0].transcript;
         agg += chunk;
-        if (!e.results[i].isFinal) onInterim?.(chunk);
+        if (!e.results[i].isFinal) {
+          onInterimRef.current?.(chunk);
+        }
       }
       const full = agg.trim();
       setTranscript(full);
-      const final = e.results[e.results.length - 1];
-      if (final && final.isFinal) {
-        onFinal?.(full);
+      
+      const lastResult = e.results[e.results.length - 1];
+      if (lastResult && lastResult.isFinal) {
+        onFinalRef.current?.(full);
         if (autoStopOnFinal) {
-          // Prevent auto-restart loop after final result
           manualStopRef.current = true;
           try {
             rec.stop();
@@ -76,40 +104,43 @@ export function useSpeechRecognition({
         }
       }
     };
+    
     recognitionRef.current = rec;
+    
     return () => {
+      manualStopRef.current = true;
       try {
         rec.abort();
       } catch {
         /* ignore */
       }
     };
-  }, [
-    lang,
-    continuous,
-    interim,
-    autoRestart,
-    onFinal,
-    onInterim,
-    onError,
-    restartCount,
-    maxAutoRestarts,
-  ]);
+  }, [lang, continuous, interim, autoRestart, maxAutoRestarts, autoStopOnFinal]);
 
   const start = useCallback(() => {
     const rec = recognitionRef.current;
-    if (!rec) return;
+    if (!rec || !supported) return;
+    
+    // Reset state for new listening session
     manualStopRef.current = false;
+    restartCountRef.current = 0;
+    setError(null);
+    setTranscript("");
+    
     try {
       rec.start();
-    } catch {
-      /* ignore */
+    } catch (e) {
+      // Handle "already started" error gracefully
+      if (e.name !== "InvalidStateError") {
+        console.warn("Speech recognition start error:", e);
+      }
     }
-  }, []);
+  }, [supported]);
 
   const stop = useCallback(() => {
     const rec = recognitionRef.current;
     if (!rec) return;
+    
     manualStopRef.current = true;
     try {
       rec.stop();
@@ -123,7 +154,7 @@ export function useSpeechRecognition({
     isListening,
     transcript,
     error,
-    restartCount,
+    restartCount: restartCountRef.current,
     startListening: start,
     stopListening: stop,
   };

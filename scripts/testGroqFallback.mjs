@@ -4,7 +4,7 @@
 //        --prompt "Give a one sentence heat pump efficiency tip"
 // Or set env var VITE_GROQ_API_KEY and omit --key.
 
-import { askJouleFallback } from "../src/lib/groqIntegration.js";
+import { askJouleFallback } from "../src/lib/groqAgent.js";
 
 function getArg(flag) {
   const idx = process.argv.indexOf(flag);

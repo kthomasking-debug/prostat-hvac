@@ -11,19 +11,21 @@ export default defineConfig({
   plugins: [
     react(),
     legacy({
-      // Ensure compatibility with older WebView used by Android 9 (Chromium 69-ish)
-      targets: ["defaults", "Android >= 9"],
+      // Target Android 4.4 KitKat / 5.0 Lollipop (Chrome 30-40)
+      targets: ["android >= 4.4", "chrome >= 30"],
       // Include runtime polyfills where needed
       additionalLegacyPolyfills: ["regenerator-runtime/runtime"],
       // Render legacy chunks alongside modern chunks to improve loading on older platforms
       renderLegacyChunks: true,
+      // Modern polyfills for fetch, Promise, etc.
+      modernPolyfills: false,
     }),
   ],
   // No proxy needed - agent runs client-side now!
   // Temperature endpoints can be accessed directly or via external thermometer API
   build: {
-    // Target older JS for better Android 9 WebView compatibility
-    target: "es2017",
+    // Target ES5 for maximum compatibility with Android 4.4 KitKat
+    target: "es5",
     chunkSizeWarningLimit: 1500,
     // Let Vite handle chunking automatically to avoid React dependency issues
     // Vite will automatically split chunks optimally and maintain correct load order

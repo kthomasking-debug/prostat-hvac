@@ -15,6 +15,8 @@ import {
   Download,
   Upload,
   CheckCircle2,
+  ExternalLink,
+  Zap,
 } from "lucide-react";
 import {
   loadThermostatSettings,
@@ -23,6 +25,225 @@ import {
   DEFAULT_THERMOSTAT_SETTINGS,
 } from "../lib/thermostatSettings";
 import ScheduleEditor from "./ScheduleEditor";
+
+// Settings guide links - maps setting keys to their guide documents
+const SETTINGS_GUIDES = {
+  "thresholds.heatDifferential": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.coolDifferential": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.compressorMinCycleOff": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.heatMinOnTime": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.coolMinOnTime": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.compressorMinOutdoorTemp": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.auxHeatMaxOutdoorTemp": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.heatDissipationTime": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.coolDissipationTime": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.acOvercoolMax": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  "thresholds.heatCoolMinDelta": "/docs/THRESHOLD-OPTIMIZATION-GUIDE.md",
+  // Add more guides as they are created
+};
+
+// Typical/recommended values for settings (when CSV analysis isn't available)
+const TYPICAL_VALUES = {
+  "thresholds.heatDifferential": 1.0,
+  "thresholds.coolDifferential": 1.0,
+  "thresholds.compressorMinCycleOff": 600,
+  "thresholds.heatMinOnTime": 600,
+  "thresholds.coolMinOnTime": 600,
+  "thresholds.compressorMinOutdoorTemp": 30,
+  "thresholds.auxHeatMaxOutdoorTemp": 35,
+  "thresholds.heatDissipationTime": 60,
+  "thresholds.coolDissipationTime": 45,
+  "thresholds.acOvercoolMax": 2.0,
+  "thresholds.heatCoolMinDelta": 3,
+};
+
+// Comprehensive CSV analysis function
+const analyzeCSVData = () => {
+  try {
+    const csvData = localStorage.getItem('spa_parsedCsvData');
+    if (!csvData) return null;
+    
+    const data = JSON.parse(csvData);
+    if (!data || data.length === 0) return null;
+    
+    // Helper to find column by patterns
+    const findColumn = (patterns) => {
+      if (!data || data.length === 0) return null;
+      const sampleRow = data[0];
+      const availableCols = Object.keys(sampleRow);
+      for (const pattern of patterns) {
+        const found = availableCols.find(col => {
+          const colLower = col.toLowerCase();
+          return typeof pattern === 'string' ? colLower.includes(pattern.toLowerCase()) : pattern.test(col);
+        });
+        if (found) return found;
+      }
+      return null;
+    };
+    
+    // Find all relevant columns
+    const heatStageCol = findColumn(['heat stage 1', /heat.*stage.*sec/i, 'heat stage']);
+    const coolStageCol = findColumn(['cool stage 1', /cool.*stage.*sec/i, 'cool stage', 'compressor stage 1']);
+    const auxHeatCol = findColumn(['aux heat 1', /aux.*heat.*sec/i, 'aux heat']);
+    const currentTempCol = findColumn(['current temp', 'indoor temp', 'temp']);
+    const heatSetTempCol = findColumn(['heat set temp', 'heat setpoint']);
+    const outdoorTempCol = findColumn(['outdoor temp', 'outside temp']);
+    
+    if (!heatStageCol && !coolStageCol) return null; // Need at least one stage column
+    
+    const analysis = {
+      cyclesPerHour: null,
+      shortCycles: 0,
+      avgRuntime: null,
+      minRuntime: null,
+      maxRuntime: null,
+      heatDifferential: null,
+      coolDifferential: null,
+      compressorMinOutdoorTemp: null,
+      auxHeatMaxOutdoorTemp: null,
+      heatDissipationTime: null,
+      coolDissipationTime: null,
+      compressorMinCycleOff: null,
+      heatMinOnTime: null,
+      coolMinOnTime: null,
+    };
+    
+    // Analyze heat cycles
+    if (heatStageCol) {
+      const heatRuns = data.filter(row => parseFloat(row[heatStageCol] || 0) > 0);
+      const heatRuntimes = heatRuns.map(row => parseFloat(row[heatStageCol] || 0));
+      
+      if (heatRuntimes.length > 0) {
+        analysis.avgRuntime = heatRuntimes.reduce((a, b) => a + b, 0) / heatRuntimes.length;
+        analysis.minRuntime = Math.min(...heatRuntimes);
+        analysis.maxRuntime = Math.max(...heatRuntimes);
+        
+        // Count short cycles (< 240 sec = 4 min)
+        analysis.shortCycles = heatRuntimes.filter(rt => rt > 0 && rt < 240).length;
+        
+        // Calculate cycles per hour (count transitions from off to on)
+        let cycleCount = 0;
+        let wasRunning = false;
+        const recentData = data.slice(-12); // Last hour of data
+        recentData.forEach((row) => {
+          const runtime = parseFloat(row[heatStageCol] || 0);
+          const isRunning = runtime > 0;
+          if (isRunning && !wasRunning) cycleCount++;
+          wasRunning = isRunning;
+        });
+        analysis.cyclesPerHour = recentData.length >= 4 ? (cycleCount / recentData.length) * 12 : null;
+      }
+      
+      // Analyze heat differential (how far temp drops below setpoint before heat starts)
+      if (currentTempCol && heatSetTempCol) {
+        const heatErrors = [];
+        let wasOff = true;
+        data.forEach((row) => {
+          const runtime = parseFloat(row[heatStageCol] || 0);
+          const isRunning = runtime > 0;
+          const currentTemp = parseFloat(row[currentTempCol] || 0);
+          const setTemp = parseFloat(row[heatSetTempCol] || 0);
+          
+          if (isRunning && wasOff && currentTemp > 0 && setTemp > 0) {
+            // Heat just turned on - check how far below setpoint we were
+            heatErrors.push(setTemp - currentTemp);
+          }
+          wasOff = !isRunning;
+        });
+        if (heatErrors.length > 0) {
+          const maxError = Math.max(...heatErrors);
+          analysis.heatDifferential = maxError > 1.0 ? Math.min(maxError, 1.5) : 0.5;
+        }
+      }
+      
+      // Analyze compressor running in cold weather
+      if (outdoorTempCol) {
+        const coldRuns = data.filter(row => {
+          const runtime = parseFloat(row[heatStageCol] || 0);
+          const outdoorTemp = parseFloat(row[outdoorTempCol] || 0);
+          return runtime > 0 && outdoorTemp < 35;
+        });
+        if (coldRuns.length > 0) {
+          const coldestRun = Math.min(...coldRuns.map(r => parseFloat(r[outdoorTempCol] || 0)));
+          analysis.compressorMinOutdoorTemp = Math.max(30, Math.ceil(coldestRun + 2));
+        }
+      }
+      
+      // Analyze heat dissipation (coast-up after heat turns off)
+      if (currentTempCol) {
+        const coastUps = [];
+        let lastHeatTemp = null;
+        let lastHeatTime = null;
+        data.forEach((row, idx) => {
+          const runtime = parseFloat(row[heatStageCol] || 0);
+          const currentTemp = parseFloat(row[currentTempCol] || 0);
+          const isRunning = runtime > 0;
+          
+          if (isRunning) {
+            lastHeatTemp = currentTemp;
+            lastHeatTime = idx;
+          } else if (lastHeatTemp !== null && lastHeatTime !== null && idx - lastHeatTime <= 3) {
+            // Heat just turned off, check temp rise in next few rows
+            if (currentTemp > lastHeatTemp) {
+              coastUps.push(currentTemp - lastHeatTemp);
+            }
+          }
+        });
+        if (coastUps.length > 0) {
+          const avgCoastUp = coastUps.reduce((a, b) => a + b, 0) / coastUps.length;
+          if (avgCoastUp > 0.3) {
+            analysis.heatDissipationTime = 60; // Significant coast-up, recommend 60 sec
+          } else if (avgCoastUp > 0.1) {
+            analysis.heatDissipationTime = 30; // Some coast-up, recommend 30 sec
+          }
+        }
+      }
+    }
+    
+    // Analyze aux heat
+    if (auxHeatCol && outdoorTempCol) {
+      const auxRuns = data.filter(row => parseFloat(row[auxHeatCol] || 0) > 0);
+      if (auxRuns.length > 0) {
+        const auxOutdoorTemps = auxRuns.map(row => parseFloat(row[outdoorTempCol] || 0));
+        const maxAuxTemp = Math.max(...auxOutdoorTemps);
+        if (maxAuxTemp > 40) {
+          analysis.auxHeatMaxOutdoorTemp = 35; // Aux ran too warm, lower threshold
+        } else if (auxRuns.length === 0) {
+          analysis.auxHeatMaxOutdoorTemp = 50; // Never ran, can raise threshold
+        }
+      } else {
+        analysis.auxHeatMaxOutdoorTemp = 50; // Never ran, can raise threshold
+      }
+    }
+    
+    // Calculate recommendations based on analysis
+    if (analysis.shortCycles > 0) {
+      analysis.compressorMinCycleOff = 600; // Short cycling detected, increase to 10 min
+      analysis.heatMinOnTime = analysis.avgRuntime < 300 ? 600 : 300;
+    } else {
+      analysis.compressorMinCycleOff = 300; // No short cycling, 5 min is fine
+      analysis.heatMinOnTime = analysis.avgRuntime < 300 ? 420 : 300;
+    }
+    
+    // Differential recommendation based on cycles per hour
+    if (analysis.cyclesPerHour !== null) {
+      if (analysis.cyclesPerHour < 3) {
+        analysis.heatDifferential = analysis.heatDifferential || 0.5;
+      } else if (analysis.cyclesPerHour <= 4) {
+        analysis.heatDifferential = 0.75;
+      } else if (analysis.cyclesPerHour <= 6) {
+        analysis.heatDifferential = 1.0;
+      } else {
+        analysis.heatDifferential = 1.5;
+      }
+    }
+    
+    return analysis;
+  } catch (error) {
+    console.warn('Failed to analyze CSV data:', error);
+    return null;
+  }
+};
 
 // Settings help text
 const SETTINGS_HELP = {
@@ -39,18 +260,36 @@ const SETTINGS_HELP = {
     "Enable Auto mode to automatically switch between heating and cooling",
   "thresholds.heatCoolMinDelta":
     "Minimum temperature gap between heat and cool setpoints in Auto mode (prevents rapid switching)",
+  "thresholds.staging":
+    "Auto: Ecobee manages staging automatically. Manual: You configure detailed staging parameters.",
   "thresholds.compressorMinCycleOff":
     "Minimum time compressor must stay off between cycles (protects compressor from short cycling)",
+  "thresholds.compressorMinOutdoorTemp":
+    "Minimum outdoor temperature below which the compressor (AC or heat pump) will not run. Protects equipment.",
+  "thresholds.acOvercoolMax":
+    "Allows the AC to cool below the set point by this amount to help reduce indoor humidity",
+  "thresholds.auxHeatMaxOutdoorTemp":
+    "Outdoor temperature above which auxiliary heat will not run. Helps avoid inefficient aux heat when not needed.",
   "thresholds.heatDifferential":
-    "Dead band for heating: how far below setpoint before heat turns on",
-  "thresholds.coolDifferential":
-    "Dead band for cooling: how far above setpoint before cooling turns on",
+    "Dead band for heating: how far below setpoint before heat turns on. Smaller = more frequent cycles; bigger = longer cycles.",
+  "thresholds.heatDissipationTime":
+    "After heat call ends, how long the fan continues to run to push out residual warm air from the ducts",
   "thresholds.heatMinOnTime":
     "Minimum time heating must run once turned on (prevents short cycles)",
+  "thresholds.coolDifferential":
+    "Dead band for cooling: how far above setpoint before cooling turns on. Smaller = more frequent cycles; bigger = longer cycles.",
+  "thresholds.coolDissipationTime":
+    "How long the fan runs after cooling stops, to make use of remaining cool air in the ducts",
   "thresholds.coolMinOnTime":
     "Minimum time cooling must run once turned on (prevents short cycles)",
+  "thresholds.compressorReverseStaging":
+    "When enabled, as the thermostat gets close to the set point, it will drop from higher stages to a lower stage to finish more efficiently",
   "thresholds.temperatureCorrection":
-    "Offset to apply to temperature readings (useful for sensor calibration)",
+    "Offset to apply to temperature readings (useful for sensor calibration). Positive = reads warmer, negative = reads cooler.",
+  "thresholds.humidityCorrection":
+    "Offset to apply to humidity readings (useful for sensor calibration). Positive = reads more humid, negative = reads less humid.",
+  "thresholds.thermalProtect":
+    "Maximum difference between the thermostat's temperature reading and remote sensors. If a sensor reads wildly different, it may be ignored. Helps avoid using bad sensors.",
   "comfortSettings.heatSetPoint": "Heating setpoint for this comfort setting",
   "comfortSettings.coolSetPoint": "Cooling setpoint for this comfort setting",
   "comfortSettings.fanMode":
@@ -160,6 +399,49 @@ export default function ThermostatSettingsPanel() {
     ) {
       errors["thresholds.temperatureCorrection"] =
         "Temperature Correction must be between -5 to +5°F";
+    }
+    if (
+      s.thresholds.heatDissipationTime < 0 ||
+      s.thresholds.heatDissipationTime > 600
+    ) {
+      errors["thresholds.heatDissipationTime"] =
+        "Heat Dissipation Time must be between 0-600 seconds";
+    }
+    if (
+      s.thresholds.coolDissipationTime < 0 ||
+      s.thresholds.coolDissipationTime > 600
+    ) {
+      errors["thresholds.coolDissipationTime"] =
+        "Cool Dissipation Time must be between 0-600 seconds";
+    }
+    if (
+      s.thresholds.humidityCorrection < -10 ||
+      s.thresholds.humidityCorrection > 10
+    ) {
+      errors["thresholds.humidityCorrection"] =
+        "Humidity Correction must be between -10 to +10%";
+    }
+    if (s.thresholds.thermalProtect < 1 || s.thresholds.thermalProtect > 20) {
+      errors["thresholds.thermalProtect"] =
+        "Thermal Protect must be between 1-20°F";
+    }
+    if (
+      s.thresholds.compressorMinOutdoorTemp < -20 ||
+      s.thresholds.compressorMinOutdoorTemp > 60
+    ) {
+      errors["thresholds.compressorMinOutdoorTemp"] =
+        "Compressor Min Outdoor Temp must be between -20 to 60°F";
+    }
+    if (s.thresholds.acOvercoolMax < 0 || s.thresholds.acOvercoolMax > 5) {
+      errors["thresholds.acOvercoolMax"] =
+        "AC Overcool Max must be between 0-5°F";
+    }
+    if (
+      s.thresholds.auxHeatMaxOutdoorTemp < 20 ||
+      s.thresholds.auxHeatMaxOutdoorTemp > 60
+    ) {
+      errors["thresholds.auxHeatMaxOutdoorTemp"] =
+        "Aux Heat Max Outdoor Temp must be between 20-60°F";
     }
 
     return errors;
@@ -614,6 +896,30 @@ export default function ThermostatSettingsPanel() {
                   max={10}
                   helpKey="thresholds.heatCoolMinDelta"
                 />
+                <div>
+                  <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
+                    Configure Staging
+                    <div className="relative group">
+                      <HelpCircle
+                        size={12}
+                        className="text-gray-400 hover:text-gray-600 cursor-help"
+                      />
+                      <div className="absolute left-0 bottom-full mb-2 w-64 p-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded shadow-lg z-10 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
+                        {SETTINGS_HELP["thresholds.staging"]}
+                      </div>
+                    </div>
+                  </label>
+                  <select
+                    value={settings.thresholds.staging}
+                    onChange={(e) =>
+                      updateSetting("thresholds.staging", e.target.value)
+                    }
+                    className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                  >
+                    <option value="auto">Auto (Ecobee manages staging)</option>
+                    <option value="manual">Manual (You configure staging)</option>
+                  </select>
+                </div>
                 <SettingInput
                   label="Compressor Min Cycle-Off (sec)"
                   type="number"
@@ -624,6 +930,7 @@ export default function ThermostatSettingsPanel() {
                   min={60}
                   max={1800}
                   helpKey="thresholds.compressorMinCycleOff"
+                  settingKey="thresholds.compressorMinCycleOff"
                 />
                 <SettingInput
                   label="Compressor Min Outdoor Temp (°F)"
@@ -637,6 +944,7 @@ export default function ThermostatSettingsPanel() {
                   }
                   min={-20}
                   max={60}
+                  helpKey="thresholds.compressorMinOutdoorTemp"
                 />
                 <SettingInput
                   label="AC Overcool Max (°F)"
@@ -648,6 +956,7 @@ export default function ThermostatSettingsPanel() {
                   min={0}
                   max={5}
                   step={0.5}
+                  helpKey="thresholds.acOvercoolMax"
                 />
                 <SettingInput
                   label="Aux Heat Max Outdoor Temp (°F)"
@@ -658,6 +967,7 @@ export default function ThermostatSettingsPanel() {
                   }
                   min={20}
                   max={60}
+                  helpKey="thresholds.auxHeatMaxOutdoorTemp"
                 />
                 <SettingInput
                   label="Heat Differential (°F)"
@@ -670,6 +980,18 @@ export default function ThermostatSettingsPanel() {
                   max={5}
                   step={0.1}
                   helpKey="thresholds.heatDifferential"
+                  settingKey="thresholds.heatDifferential"
+                />
+                <SettingInput
+                  label="Heat Dissipation Time (sec)"
+                  type="number"
+                  value={settings.thresholds.heatDissipationTime}
+                  onChange={(v) =>
+                    updateSetting("thresholds.heatDissipationTime", Number(v))
+                  }
+                  min={0}
+                  max={600}
+                  helpKey="thresholds.heatDissipationTime"
                 />
                 <SettingInput
                   label="Heat Min On Time (sec)"
@@ -693,6 +1015,18 @@ export default function ThermostatSettingsPanel() {
                   max={5}
                   step={0.1}
                   helpKey="thresholds.coolDifferential"
+                  settingKey="thresholds.coolDifferential"
+                />
+                <SettingInput
+                  label="Cool Dissipation Time (sec)"
+                  type="number"
+                  value={settings.thresholds.coolDissipationTime}
+                  onChange={(v) =>
+                    updateSetting("thresholds.coolDissipationTime", Number(v))
+                  }
+                  min={0}
+                  max={600}
+                  helpKey="thresholds.coolDissipationTime"
                 />
                 <SettingInput
                   label="Cool Min On Time (sec)"
@@ -724,6 +1058,31 @@ export default function ThermostatSettingsPanel() {
                   onChange={(v) =>
                     updateSetting("thresholds.compressorReverseStaging", v)
                   }
+                  helpKey="thresholds.compressorReverseStaging"
+                />
+                <SettingInput
+                  label="Humidity Correction (%)"
+                  type="number"
+                  value={settings.thresholds.humidityCorrection}
+                  onChange={(v) =>
+                    updateSetting("thresholds.humidityCorrection", Number(v))
+                  }
+                  min={-10}
+                  max={10}
+                  step={1}
+                  helpKey="thresholds.humidityCorrection"
+                />
+                <SettingInput
+                  label="Thermal Protect (°F)"
+                  type="number"
+                  value={settings.thresholds.thermalProtect}
+                  onChange={(v) =>
+                    updateSetting("thresholds.thermalProtect", Number(v))
+                  }
+                  min={1}
+                  max={20}
+                  step={1}
+                  helpKey="thresholds.thermalProtect"
                 />
               </div>
             </div>
@@ -1056,13 +1415,111 @@ function SettingInput({
   helpKey,
   defaultValue,
   showComparison,
+  settingKey, // New prop: the full setting path (e.g., "thresholds.heatDifferential")
 }) {
   const [showHelp, setShowHelp] = useState(false);
   const helpText = helpKey ? SETTINGS_HELP[helpKey] : null;
+  const guideLink = settingKey ? SETTINGS_GUIDES[settingKey] : null;
   const isDifferent =
     showComparison &&
     defaultValue !== undefined &&
     JSON.stringify(value) !== JSON.stringify(defaultValue);
+  
+  // Calculate optimal value based on CSV analysis or typical values
+  const handleAutoClick = () => {
+    const analysis = analyzeCSVData();
+    
+    let recommendedValue = null;
+    let message = "";
+    
+    if (analysis) {
+      // Use CSV analysis if available
+      switch (settingKey) {
+        case "thresholds.heatDifferential":
+          recommendedValue = analysis.heatDifferential || TYPICAL_VALUES[settingKey];
+          message = analysis.cyclesPerHour !== null 
+            ? `Auto-set to ${recommendedValue}°F based on ${analysis.cyclesPerHour.toFixed(1)} cycles/hour. ${analysis.shortCycles > 0 ? `Warning: ${analysis.shortCycles} short cycles detected.` : 'No short cycling detected.'}`
+            : `Auto-set to ${recommendedValue}°F (typical recommendation).`;
+          break;
+        case "thresholds.coolDifferential":
+          recommendedValue = analysis.heatDifferential || TYPICAL_VALUES[settingKey]; // Use same logic as heat
+          message = `Auto-set to ${recommendedValue}°F (typical recommendation).`;
+          break;
+        case "thresholds.compressorMinCycleOff":
+          recommendedValue = analysis.compressorMinCycleOff || TYPICAL_VALUES[settingKey];
+          message = analysis.shortCycles > 0
+            ? `Auto-set to ${recommendedValue}s (${recommendedValue/60} min) to prevent ${analysis.shortCycles} short cycles detected.`
+            : `Auto-set to ${recommendedValue}s (${recommendedValue/60} min) - no short cycling detected, safe minimum.`;
+          break;
+        case "thresholds.heatMinOnTime":
+          recommendedValue = analysis.heatMinOnTime || TYPICAL_VALUES[settingKey];
+          message = analysis.avgRuntime 
+            ? `Auto-set to ${recommendedValue}s (${recommendedValue/60} min). Average runtime: ${Math.round(analysis.avgRuntime)}s.`
+            : `Auto-set to ${recommendedValue}s (${recommendedValue/60} min) - typical recommendation.`;
+          break;
+        case "thresholds.coolMinOnTime":
+          recommendedValue = TYPICAL_VALUES[settingKey];
+          message = `Auto-set to ${recommendedValue}s (${recommendedValue/60} min) - typical recommendation.`;
+          break;
+        case "thresholds.compressorMinOutdoorTemp":
+          recommendedValue = analysis.compressorMinOutdoorTemp || TYPICAL_VALUES[settingKey];
+          message = analysis.compressorMinOutdoorTemp
+            ? `Auto-set to ${recommendedValue}°F. Compressor ran at ${recommendedValue - 2}°F - protect it by locking out below ${recommendedValue}°F.`
+            : `Auto-set to ${recommendedValue}°F - typical recommendation.`;
+          break;
+        case "thresholds.auxHeatMaxOutdoorTemp":
+          recommendedValue = analysis.auxHeatMaxOutdoorTemp || TYPICAL_VALUES[settingKey];
+          message = analysis.auxHeatMaxOutdoorTemp === 50
+            ? `Auto-set to ${recommendedValue}°F. Aux heat never ran - can safely raise threshold.`
+            : `Auto-set to ${recommendedValue}°F - prevents wasteful aux heat above this temp.`;
+          break;
+        case "thresholds.heatDissipationTime":
+          recommendedValue = analysis.heatDissipationTime || TYPICAL_VALUES[settingKey];
+          message = analysis.heatDissipationTime
+            ? `Auto-set to ${recommendedValue}s. Coast-up detected - capture free heat from ducts!`
+            : `Auto-set to ${recommendedValue}s - typical recommendation to capture residual heat.`;
+          break;
+        case "thresholds.coolDissipationTime":
+          recommendedValue = TYPICAL_VALUES[settingKey];
+          message = `Auto-set to ${recommendedValue}s - typical recommendation for summer.`;
+          break;
+        default:
+          recommendedValue = TYPICAL_VALUES[settingKey];
+          message = recommendedValue 
+            ? `Auto-set to ${recommendedValue}${settingKey.includes('Temp') ? '°F' : settingKey.includes('Time') ? 's' : ''} (typical recommendation).`
+            : "No recommendation available for this setting.";
+      }
+    } else {
+      // No CSV data - use typical values
+      recommendedValue = TYPICAL_VALUES[settingKey];
+      if (recommendedValue) {
+        message = `Auto-set to ${recommendedValue}${settingKey.includes('Temp') ? '°F' : settingKey.includes('Time') ? 's' : ''} (typical recommendation). Upload CSV data in System Performance Analyzer for data-driven optimization.`;
+      } else {
+        alert("No CSV data available and no typical value for this setting. Please upload thermostat data in the System Performance Analyzer first.");
+        return;
+      }
+    }
+    
+    if (recommendedValue !== null) {
+      onChange(String(recommendedValue));
+      alert(message);
+    }
+  };
+  
+  // Only show Auto button for settings that support it
+  const showAutoButton = settingKey && (
+    settingKey === "thresholds.heatDifferential" || 
+    settingKey === "thresholds.coolDifferential" ||
+    settingKey === "thresholds.compressorMinCycleOff" ||
+    settingKey === "thresholds.heatMinOnTime" ||
+    settingKey === "thresholds.coolMinOnTime" ||
+    settingKey === "thresholds.compressorMinOutdoorTemp" ||
+    settingKey === "thresholds.auxHeatMaxOutdoorTemp" ||
+    settingKey === "thresholds.heatDissipationTime" ||
+    settingKey === "thresholds.coolDissipationTime" ||
+    settingKey === "thresholds.acOvercoolMax" ||
+    settingKey === "thresholds.heatCoolMinDelta"
+  );
 
   if (type === "checkbox") {
     return (
@@ -1117,27 +1574,51 @@ function SettingInput({
             )}
           </div>
         )}
+        {guideLink && (
+          <a
+            href={guideLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-1 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+            title="View guide"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLink size={12} />
+          </a>
+        )}
       </label>
-      <div className="relative">
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          min={min}
-          max={max}
-          step={step}
-          className={`w-full p-2 rounded border ${
-            error
-              ? "border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/30"
-              : isDifferent
-              ? "border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20"
-              : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
-          } text-gray-900 dark:text-gray-100`}
-        />
-        {showComparison && isDifferent && defaultValue !== undefined && (
-          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-blue-600 dark:text-blue-400">
-            Default: {defaultValue}
-          </div>
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <input
+            type={type}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            min={min}
+            max={max}
+            step={step}
+            className={`w-full p-2 rounded border ${
+              error
+                ? "border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/30"
+                : isDifferent
+                ? "border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20"
+                : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+            } text-gray-900 dark:text-gray-100`}
+          />
+          {showComparison && isDifferent && defaultValue !== undefined && (
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-blue-600 dark:text-blue-400">
+              Default: {defaultValue}
+            </div>
+          )}
+        </div>
+        {showAutoButton && (
+          <button
+            onClick={handleAutoClick}
+            className="px-3 py-2 text-xs font-medium rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-1 whitespace-nowrap"
+            title="Auto-calculate based on CSV data analysis (NEMA MG-1 safety limits)"
+          >
+            <Zap size={12} />
+            Auto
+          </button>
         )}
       </div>
       {error && (

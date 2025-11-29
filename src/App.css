@@ -77,10 +77,19 @@
 }
 
 .inputs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  /* Flexbox fallback for Android 4.4 */
+  display: flex;
+  flex-wrap: wrap;
   gap: 1.5rem;
   margin-bottom: 2rem;
+}
+
+/* Modern browsers get Grid */
+@supports (display: grid) {
+  .inputs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
 }
 
 .input-group label {
@@ -103,10 +112,27 @@
 }
 
 .results-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 2fr;
+  /* Flexbox fallback for Android 4.4 */
+  display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   margin-top: 1rem;
+}
+
+.results-grid > * {
+  flex: 1 1 200px;
+}
+
+/* Modern browsers get Grid */
+@supports (display: grid) {
+  .results-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 2fr;
+  }
+  
+  .results-grid > * {
+    flex: none;
+  }
 }
 
 /* Tablet adjustments */
@@ -269,8 +295,17 @@
 
   /* Card-based table for mobile */
   .daily-breakdown-mobile {
-    display: grid;
+    /* Flexbox fallback for Android 4.4 */
+    display: flex;
+    flex-direction: column;
     gap: 0.75rem;
+  }
+
+  /* Modern browsers get Grid */
+  @supports (display: grid) {
+    .daily-breakdown-mobile {
+      display: grid;
+    }
   }
 
   .daily-card {

@@ -101,14 +101,14 @@ export async function readFile(filePath) {
     // In Node: use fs.readFile
     const response = await fetch(`/${filePath}`);
     if (!response.ok) {
-      return { 
-        error: true, 
+      return {
+        error: true,
         message: `File not found: ${filePath}`,
-        available: listAvailableFiles()
+        available: listAvailableFiles(),
       };
     }
     const content = await response.text();
-    
+
     // Try to parse as JSON
     try {
       return { success: true, data: JSON.parse(content), raw: content };
@@ -126,29 +126,29 @@ export async function readFile(filePath) {
 export async function queryDatabase(sql) {
   // In browser: use IndexedDB or fetch from API
   // In Node: use SQLite or PostgreSQL
-  
+
   // Example: Query heating events
-  if (sql.includes('heating_events') || sql.includes('heat_events')) {
+  if (sql.includes("heating_events") || sql.includes("heat_events")) {
     return await queryHeatingEvents(sql);
   }
-  
+
   // Example: Query temperature history
-  if (sql.includes('temperature') || sql.includes('temp_history')) {
+  if (sql.includes("temperature") || sql.includes("temp_history")) {
     return await queryTemperatureHistory(sql);
   }
-  
-  return { error: true, message: 'Unsupported query' };
+
+  return { error: true, message: "Unsupported query" };
 }
 
 async function queryHeatingEvents(sql) {
   // Parse SQL (simplified - use proper SQL parser in production)
-  const today = sql.includes('today');
-  const thisWeek = sql.includes('this week');
-  
+  const today = sql.includes("today");
+  const thisWeek = sql.includes("this week");
+
   // Read from CSV or database
-  const events = await readFile('logs/heating_events.csv');
+  const events = await readFile("logs/heating_events.csv");
   // ... parse and filter ...
-  
+
   return { success: true, rows: events };
 }
 
@@ -158,23 +158,17 @@ async function queryHeatingEvents(sql) {
 export async function runTerminal(command) {
   // In browser: proxy through API endpoint
   // In Node: use child_process.exec
-  
+
   // Security: Whitelist allowed commands
-  const allowedCommands = [
-    'curl',
-    'cat',
-    'grep',
-    'tail',
-    'head',
-  ];
-  
-  const cmd = command.split(' ')[0];
+  const allowedCommands = ["curl", "cat", "grep", "tail", "head"];
+
+  const cmd = command.split(" ")[0];
   if (!allowedCommands.includes(cmd)) {
     return { error: true, message: `Command not allowed: ${cmd}` };
   }
-  
+
   // Execute (in Node.js)
-  const { exec } = require('child_process');
+  const { exec } = require("child_process");
   return new Promise((resolve) => {
     exec(command, (error, stdout, stderr) => {
       if (error) {
@@ -193,19 +187,19 @@ export async function browse(url) {
   try {
     const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${getApiToken(url)}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getApiToken(url)}`,
+        "Content-Type": "application/json",
       },
     });
-    
+
     if (!response.ok) {
-      return { 
-        error: true, 
+      return {
+        error: true,
         message: `API request failed: ${response.status} ${response.statusText}`,
-        status: response.status
+        status: response.status,
       };
     }
-    
+
     const data = await response.json();
     return { success: true, data };
   } catch (error) {
@@ -219,20 +213,20 @@ export async function browse(url) {
 export async function searchKnowledge(query) {
   // Simple keyword matching (upgrade to vector search)
   const knowledgeFiles = {
-    'heat pump': 'knowledge/heat_pump_basics.md',
-    'aux': 'knowledge/aux_heat_guide.md',
-    'defrost': 'knowledge/defrost_cycle.md',
+    "heat pump": "knowledge/heat_pump_basics.md",
+    aux: "knowledge/aux_heat_guide.md",
+    defrost: "knowledge/defrost_cycle.md",
     // ... etc
   };
-  
+
   for (const [keyword, file] of Object.entries(knowledgeFiles)) {
     if (query.toLowerCase().includes(keyword)) {
       const result = await readFile(file);
       return result;
     }
   }
-  
-  return { success: false, message: 'No relevant knowledge found' };
+
+  return { success: false, message: "No relevant knowledge found" };
 }
 
 // ============================================
@@ -240,10 +234,12 @@ export async function searchKnowledge(query) {
 // ============================================
 export async function getCurrentState() {
   // Read from state file
-  const state = await readFile('state/current_status.json');
+  const state = await readFile("state/current_status.json");
   if (state.error) {
     // Fallback: try API
-    return await browse('https://api.ecobee.com/1/thermostat?json={"selection":{"selectionType":"registered","selectionMatch":""}}');
+    return await browse(
+      'https://api.ecobee.com/1/thermostat?json={"selection":{"selectionType":"registered","selectionMatch":""}}'
+    );
   }
   return state;
 }
@@ -252,7 +248,7 @@ export async function getCurrentState() {
 // TOOL 7: get_user_settings()
 // ============================================
 export async function getUserSettings() {
-  return await readFile('config/settings.json');
+  return await readFile("config/settings.json");
 }
 
 // ============================================
@@ -260,37 +256,38 @@ export async function getUserSettings() {
 // ============================================
 export const AVAILABLE_TOOLS = {
   read_file: {
-    description: 'Read files from disk (state, config, logs)',
-    params: ['path'],
+    description: "Read files from disk (state, config, logs)",
+    params: ["path"],
     example: "read_file('state/current_status.json')",
   },
   query_database: {
-    description: 'Query historical data (SQL)',
-    params: ['sql'],
-    example: "query_database('SELECT * FROM heating_events WHERE date = today')",
+    description: "Query historical data (SQL)",
+    params: ["sql"],
+    example:
+      "query_database('SELECT * FROM heating_events WHERE date = today')",
   },
   run_terminal: {
-    description: 'Execute system commands (whitelisted)',
-    params: ['command'],
+    description: "Execute system commands (whitelisted)",
+    params: ["command"],
     example: "run_terminal('curl http://local-api/sensors')",
   },
   browse: {
-    description: 'Fetch data from APIs (Ecobee, Nest, etc.)',
-    params: ['url'],
+    description: "Fetch data from APIs (Ecobee, Nest, etc.)",
+    params: ["url"],
     example: "browse('https://api.ecobee.com/1/thermostat')",
   },
   search_knowledge: {
-    description: 'Search documentation and manuals',
-    params: ['query'],
+    description: "Search documentation and manuals",
+    params: ["query"],
     example: "search_knowledge('aux heat threshold')",
   },
   get_current_state: {
-    description: 'Get live thermostat state',
+    description: "Get live thermostat state",
     params: [],
     example: "get_current_state()",
   },
   get_user_settings: {
-    description: 'Get system configuration',
+    description: "Get system configuration",
     params: [],
     example: "get_user_settings()",
   },
@@ -550,18 +547,20 @@ export class EcobeeConnector {
     this.accessToken = config.accessToken;
     this.refreshToken = config.refreshToken;
     this.thermostatId = config.thermostatId;
-    this.baseUrl = config.baseUrl || 'https://api.ecobee.com';
-    this.version = config.version || '1';
+    this.baseUrl = config.baseUrl || "https://api.ecobee.com";
+    this.version = config.version || "1";
   }
 
   /**
    * Get thermostat summary (lightweight, fast)
    */
   async getSummary() {
-    const url = `${this.baseUrl}/${this.version}/thermostat?json=${JSON.stringify({
+    const url = `${this.baseUrl}/${
+      this.version
+    }/thermostat?json=${JSON.stringify({
       selection: {
-        selectionType: 'registered',
-        selectionMatch: '',
+        selectionType: "registered",
+        selectionMatch: "",
         includeRuntime: true,
         includeSensors: true,
         includeSettings: true,
@@ -578,9 +577,11 @@ export class EcobeeConnector {
    */
   async getThermostat(thermostatId = null) {
     const id = thermostatId || this.thermostatId;
-    const url = `${this.baseUrl}/${this.version}/thermostat?json=${JSON.stringify({
+    const url = `${this.baseUrl}/${
+      this.version
+    }/thermostat?json=${JSON.stringify({
       selection: {
-        selectionType: 'thermostats',
+        selectionType: "thermostats",
         selectionMatch: id,
         includeRuntime: true,
         includeSensors: true,
@@ -598,10 +599,16 @@ export class EcobeeConnector {
   /**
    * Get runtime report (historical data)
    */
-  async getRuntimeReport(startDate, endDate, columns = ['auxHeat1', 'compCool1', 'compHeat1']) {
-    const url = `${this.baseUrl}/${this.version}/runtimeReport?json=${JSON.stringify({
+  async getRuntimeReport(
+    startDate,
+    endDate,
+    columns = ["auxHeat1", "compCool1", "compHeat1"]
+  ) {
+    const url = `${this.baseUrl}/${
+      this.version
+    }/runtimeReport?json=${JSON.stringify({
       selection: {
-        selectionType: 'thermostats',
+        selectionType: "thermostats",
         selectionMatch: this.thermostatId,
         startDate,
         endDate,
@@ -620,13 +627,16 @@ export class EcobeeConnector {
     const url = `${this.baseUrl}/${this.version}/thermostat?format=json`;
     const body = {
       selection: {
-        selectionType: 'thermostats',
+        selectionType: "thermostats",
         selectionMatch: this.thermostatId,
       },
       thermostat: settings,
     };
 
-    return await this.request(url, { method: 'POST', body: JSON.stringify(body) });
+    return await this.request(url, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   }
 
   /**
@@ -639,8 +649,8 @@ export class EcobeeConnector {
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Authorization': `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
         ...options.headers,
       },
     });
@@ -652,8 +662,12 @@ export class EcobeeConnector {
     }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(`Ecobee API error: ${error.message || response.statusText}`);
+      const error = await response
+        .json()
+        .catch(() => ({ message: response.statusText }));
+      throw new Error(
+        `Ecobee API error: ${error.message || response.statusText}`
+      );
     }
 
     return await response.json();
@@ -663,11 +677,11 @@ export class EcobeeConnector {
    * Refresh access token
    */
   async refreshAccessToken() {
-    const response = await fetch('https://api.ecobee.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    const response = await fetch("https://api.ecobee.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        grant_type: 'refresh_token',
+        grant_type: "refresh_token",
         refresh_token: this.refreshToken,
         client_id: this.apiKey,
       }),
@@ -696,10 +710,13 @@ export class EcobeeConnector {
    * Save tokens to config file
    */
   async saveTokens() {
-    const config = await readFile('config/ecobee_config.json');
+    const config = await readFile("config/ecobee_config.json");
     config.data.accessToken = this.accessToken;
     config.data.refreshToken = this.refreshToken;
-    await writeFile('config/ecobee_config.json', JSON.stringify(config.data, null, 2));
+    await writeFile(
+      "config/ecobee_config.json",
+      JSON.stringify(config.data, null, 2)
+    );
   }
 
   /**
@@ -728,37 +745,51 @@ export class EcobeeConnector {
         outdoor: {
           temp: thermostat.weather.forecasts[0].temperature / 10,
           humidity: thermostat.weather.forecasts[0].relativeHumidity,
-          source: 'ecobee_weather',
+          source: "ecobee_weather",
         },
       },
       heatPump: {
-        compressorRunning: thermostat.equipmentStatus.includes('compCool1') || 
-                          thermostat.equipmentStatus.includes('compHeat1'),
-        auxHeatActive: thermostat.equipmentStatus.includes('auxHeat1') || 
-                      thermostat.equipmentStatus.includes('auxHeat2'),
-        defrostActive: thermostat.equipmentStatus.includes('defrost'),
-        outdoorUnitRunning: thermostat.equipmentStatus.includes('compHeat1') || 
-                           thermostat.equipmentStatus.includes('compCool1'),
+        compressorRunning:
+          thermostat.equipmentStatus.includes("compCool1") ||
+          thermostat.equipmentStatus.includes("compHeat1"),
+        auxHeatActive:
+          thermostat.equipmentStatus.includes("auxHeat1") ||
+          thermostat.equipmentStatus.includes("auxHeat2"),
+        defrostActive: thermostat.equipmentStatus.includes("defrost"),
+        outdoorUnitRunning:
+          thermostat.equipmentStatus.includes("compHeat1") ||
+          thermostat.equipmentStatus.includes("compCool1"),
       },
       runtime: {
-        compressorMinutesToday: thermostat.runtime.compHeat1 + thermostat.runtime.compCool1,
-        auxHeatMinutesToday: thermostat.runtime.auxHeat1 + thermostat.runtime.auxHeat2,
+        compressorMinutesToday:
+          thermostat.runtime.compHeat1 + thermostat.runtime.compCool1,
+        auxHeatMinutesToday:
+          thermostat.runtime.auxHeat1 + thermostat.runtime.auxHeat2,
         fanMinutesToday: thermostat.runtime.fan,
       },
     };
 
-    await writeFile('state/current_status.json', JSON.stringify(state, null, 2));
+    await writeFile(
+      "state/current_status.json",
+      JSON.stringify(state, null, 2)
+    );
     return state;
   }
 
   getStage(equipmentStatus) {
-    if (equipmentStatus.includes('compHeat2') || equipmentStatus.includes('compCool2')) {
-      return 'stage2';
+    if (
+      equipmentStatus.includes("compHeat2") ||
+      equipmentStatus.includes("compCool2")
+    ) {
+      return "stage2";
     }
-    if (equipmentStatus.includes('compHeat1') || equipmentStatus.includes('compCool1')) {
-      return 'stage1';
+    if (
+      equipmentStatus.includes("compHeat1") ||
+      equipmentStatus.includes("compCool1")
+    ) {
+      return "stage1";
     }
-    return 'off';
+    return "off";
   }
 }
 
@@ -767,16 +798,16 @@ export class EcobeeConnector {
 // ============================================
 
 export async function connectToEcobee() {
-  const config = await readFile('config/ecobee_config.json');
+  const config = await readFile("config/ecobee_config.json");
   if (config.error) {
-    return { error: true, message: 'Ecobee config not found' };
+    return { error: true, message: "Ecobee config not found" };
   }
 
   const connector = new EcobeeConnector(config.data);
-  
+
   // Sync current state
   await connector.syncToStateFile();
-  
+
   return connector;
 }
 ```
@@ -793,6 +824,7 @@ export async function connectToEcobee() {
 Goal: Diagnose why auxiliary heat activated at 6AM this morning
 
 ## Subtasks:
+
 1. ✅ Read heating events log for today
 2. ✅ Check outdoor temperature at 6AM
 3. ✅ Read thermostat settings (recovery, aux threshold)
@@ -801,9 +833,11 @@ Goal: Diagnose why auxiliary heat activated at 6AM this morning
 6. ⏳ Explain cause to user
 
 ## Next Action:
+
 Read config/policy.json to check aux heat settings
 
 ## Context:
+
 - User asked: "Why did my auxiliary heat activate at 6AM?"
 - Current indoor temp: 72°F
 - Target temp: 70°F
@@ -817,6 +851,7 @@ Read config/policy.json to check aux heat settings
 # NOTES
 
 ## Learned Facts:
+
 - User prefers minimal auxiliary heat usage
 - Heat pump is 3-ton Mitsubishi Hyper Heat
 - House is 2,400 sq ft, 1980s build
@@ -824,12 +859,14 @@ Read config/policy.json to check aux heat settings
 - Aux lockout is set to 35°F (from policy.json)
 
 ## Heuristics:
+
 - Defrost cycles require no intervention unless > 40 min continuous
 - Strip heat costs ~3-6x more than compressor
 - User prefers "comfort-first" strategy unless strips activate
 - Large setbacks (>3°F) often trigger strips during recovery
 
 ## System Behavior:
+
 - Balance point appears to be around 30°F
 - Recovery typically takes 1.5-2 hours for 2°F setback
 - Aux heat activates when outdoor temp < 25°F OR temp delta > 3°F
@@ -849,10 +886,15 @@ The LLM doesn't execute anything - it generates tool calls:
 
 ```json
 [
-  {"tool": "read_file", "arguments": {"path": "state/heating_events.json"}},
-  {"tool": "read_file", "arguments": {"path": "state/current_status.json"}},
-  {"tool": "query_database", "arguments": {"sql": "SELECT outdoorTemp FROM temp_history WHERE time = '6AM'"}},
-  {"tool": "read_file", "arguments": {"path": "config/policy.json"}}
+  { "tool": "read_file", "arguments": { "path": "state/heating_events.json" } },
+  { "tool": "read_file", "arguments": { "path": "state/current_status.json" } },
+  {
+    "tool": "query_database",
+    "arguments": {
+      "sql": "SELECT outdoorTemp FROM temp_history WHERE time = '6AM'"
+    }
+  },
+  { "tool": "read_file", "arguments": { "path": "config/policy.json" } }
 ]
 ```
 
@@ -862,11 +904,11 @@ The agent framework (`agentExecutor.js`) validates and executes:
 
 ```javascript
 // Tool 1: Read heating events
-const events = await readFile('state/heating_events.json');
+const events = await readFile("state/heating_events.json");
 // Returns: { events: [{ type: 'aux_heat_activation', timestamp: '6AM', ... }] }
 
 // Tool 2: Read current state
-const state = await readFile('state/current_status.json');
+const state = await readFile("state/current_status.json");
 // Returns: { thermostat: { indoorTemp: 72, ... } }
 
 // Tool 3: Query database
@@ -874,7 +916,7 @@ const outdoorTemp = await queryDatabase("SELECT...");
 // Returns: { rows: [{ outdoorTemp: 24 }] }
 
 // Tool 4: Read policy
-const policy = await readFile('config/policy.json');
+const policy = await readFile("config/policy.json");
 // Returns: { auxHeat: { allowAuxDuringRecovery: true } }
 ```
 
@@ -896,6 +938,7 @@ const policy = await readFile('config/policy.json');
 LLM combines all the data and generates answer:
 
 **Answer:**
+
 > "Outdoor temp dropped to 24°F at 5:50AM, your setpoint jumped 4 degrees at 6AM (from 68°F to 72°F), and 'Allow Aux Heat during Recovery' was enabled in your policy — so strips activated for 23 minutes to recover quickly. The heat pump alone would have taken 2+ hours to recover that 4°F difference."
 
 **Key Point:** The LLM **suggests** tool calls. The agent framework **executes** them. Tools **perform** real actions.
@@ -929,8 +972,8 @@ cp config/policy.json.example config/policy.json
 ### 4. Test Agent
 
 ```javascript
-import { answerWithAgent } from './src/lib/groqAgent.js';
-import { connectToEcobee } from './src/lib/apiConnectors.js';
+import { answerWithAgent } from "./src/lib/groqAgent.js";
+import { connectToEcobee } from "./src/lib/apiConnectors.js";
 
 // Connect to Ecobee
 const ecobee = await connectToEcobee();
@@ -959,4 +1002,3 @@ console.log(answer.message);
 - **NOTES.md** = Long-term memory
 
 **The agent becomes "smart" by combining data from all these sources.**
-

@@ -1,30 +1,270 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
+import { useNavigate, useOutletContext } from "react-router-dom";
+import ThermostatScheduleCard from "../components/ThermostatScheduleCard";
+import {
+  loadThermostatSettings,
+  saveThermostatSettings,
+} from "../lib/thermostatSettings";
+import { useEcobee } from "../hooks/useEcobee";
+import { getEcobeeCredentials } from "../lib/ecobeeApi";
+import { useProstatBridge } from "../hooks/useProstatBridge";
+import { checkBridgeHealth } from "../lib/prostatBridgeApi";
+import { useProstatRelay } from "../hooks/useProstatRelay";
+import { useBlueair } from "../hooks/useBlueair";
+import {
+  Zap,
+  Home,
+  BarChart3,
+  Calendar,
+  DollarSign,
+  Bot,
+  Droplets,
+  Thermometer,
+  Wind,
+  CheckCircle2,
+  Clock,
+  Settings,
+  Mic,
+  MicOff,
+  Search,
+  RotateCcw,
+  MessageSquare,
+} from "lucide-react";
+import AskJoule from "../components/AskJoule";
 
 const SmartThermostatDemo = () => {
   const navigate = useNavigate();
-  const [currentTemp, setCurrentTemp] = useState(72);
-  const [targetTemp, setTargetTemp] = useState(70);
-  const [mode, setMode] = useState('auto');
-  const [isAway, setIsAway] = useState(false);
-  const [aiInput, setAiInput] = useState('');
-  const [aiResponse, setAiResponse] = useState('');
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const outlet = useOutletContext() || {};
+  const userSettings = outlet.userSettings || {};
+  const setUserSetting = outlet.setUserSetting;
   
+  // Route guard: Redirect to onboarding if not completed
+  useEffect(() => {
+    const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding");
+    if (!hasCompletedOnboarding) {
+      navigate("/onboarding");
+    }
+  }, [navigate]);
+  
+  // Load userLocation from localStorage
+  const userLocation = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("userLocation");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+  
+  // Initialize targetTemp from userSettings, fallback to 70
+  const [targetTemp, setTargetTemp] = useState(() => {
+    return userSettings.winterThermostat || 70;
+  });
+
+  // State for dual-period thermostat schedule
+  // daytimeTime = when daytime period BEGINS (e.g., 6:00 AM)
+  // nighttimeTime = when nighttime period BEGINS (e.g., 10:00 PM)
+  const [daytimeTime, setDaytimeTime] = useState(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const homeEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
+        (e) => e.comfortSetting === "home"
+      );
+      return homeEntry?.time || "06:00";
+    } catch {
+      return "06:00";
+    }
+  });
+
+  const [nighttimeTime, setNighttimeTime] = useState(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const sleepEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
+        (e) => e.comfortSetting === "sleep"
+      );
+      return sleepEntry?.time || "22:00";
+    } catch {
+      return "22:00";
+    }
+  });
+
+  // State for nighttime temperature
+  const [nighttimeTemp, setNighttimeTemp] = useState(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      return thermostatSettings?.comfortSettings?.sleep?.heatSetPoint || 65;
+    } catch {
+      return 65;
+    }
+  });
+
+  // Sync times and temperatures from localStorage when component mounts or settings change
+  useEffect(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const homeEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
+        (e) => e.comfortSetting === "home"
+      );
+      const sleepEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
+        (e) => e.comfortSetting === "sleep"
+      );
+      if (homeEntry?.time) setDaytimeTime(homeEntry.time);
+      if (sleepEntry?.time) setNighttimeTime(sleepEntry.time);
+      const sleepTemp = thermostatSettings?.comfortSettings?.sleep?.heatSetPoint;
+      if (sleepTemp !== undefined) setNighttimeTemp(sleepTemp);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Track settings version to force dehumidifier settings to update
+  const [settingsVersion, setSettingsVersion] = useState(0);
+
+  // Listen for thermostat settings updates
+  useEffect(() => {
+    const handleSettingsUpdate = (e) => {
+      try {
+        const thermostatSettings = loadThermostatSettings();
+        if (e.detail?.comfortSettings?.sleep?.heatSetPoint !== undefined) {
+          setNighttimeTemp(thermostatSettings?.comfortSettings?.sleep?.heatSetPoint || 65);
+        }
+        // Force dehumidifier settings to recompute when any settings change
+        setSettingsVersion(prev => prev + 1);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("thermostatSettingsUpdated", handleSettingsUpdate);
+    return () => {
+      window.removeEventListener("thermostatSettingsUpdated", handleSettingsUpdate);
+    };
+  }, []);
+
+  
+  // Sync targetTemp when userSettings.winterThermostat changes (e.g., from AI update)
+  useEffect(() => {
+    if (userSettings.winterThermostat && userSettings.winterThermostat !== targetTemp) {
+      setTargetTemp(userSettings.winterThermostat);
+    }
+  }, [userSettings.winterThermostat]);
+  
+  // ProStat Bridge (HomeKit HAP) - Preferred method
+  const [bridgeAvailable, setBridgeAvailable] = useState(false);
+  const prostatBridge = useProstatBridge(null, 5000); // Poll every 5 seconds (faster than cloud)
+  
+  // ProStat Bridge Relay Control (Dehumidifier)
+  const prostatRelay = useProstatRelay(2, 5000); // Channel 2 (Y2 terminal), poll every 5 seconds
+  
+  // ProStat Bridge Blueair Control (Air Purifier)
+  const _blueair = useBlueair(0, 10000); // Device 0, poll every 10 seconds
+  
+  // Ecobee Cloud API (fallback)
+  const ecobeeCredentials = getEcobeeCredentials();
+  const useEcobeeIntegration = !!(ecobeeCredentials.apiKey && ecobeeCredentials.accessToken) && !bridgeAvailable;
+  const ecobee = useEcobee(null, 30000); // Poll every 30 seconds
+  
+  // State for simulated mode (when Ecobee not connected)
+  const [simulatedCurrentTemp, _setSimulatedCurrentTemp] = useState(72);
+  const [simulatedCurrentHumidity, _setSimulatedCurrentHumidity] = useState(50);
+  const [simulatedMode, setSimulatedMode] = useState("heat");
+  const [simulatedIsAway, setSimulatedIsAway] = useState(false);
+  
+  // Determine which integration to use (ProStat Bridge preferred)
+  const useProstatIntegration = bridgeAvailable && prostatBridge.connected;
+  const activeIntegration = useProstatIntegration ? prostatBridge : (useEcobeeIntegration ? ecobee : null);
+  
+  // Use ProStat Bridge or Ecobee data if available, otherwise use simulated
+  const currentTemp = activeIntegration && activeIntegration.temperature !== null 
+    ? activeIntegration.temperature 
+    : simulatedCurrentTemp;
+  const currentHumidity = activeIntegration && activeIntegration.humidity !== null 
+    ? activeIntegration.humidity 
+    : simulatedCurrentHumidity;
+  const mode = activeIntegration && activeIntegration.mode 
+    ? activeIntegration.mode 
+    : simulatedMode;
+  
+  // Check bridge availability on mount
+  useEffect(() => {
+    checkBridgeHealth().then(setBridgeAvailable);
+  }, []);
+  const isAway = activeIntegration 
+    ? (activeIntegration.isAway || false) 
+    : simulatedIsAway;
+  
+  // Wrapper functions that use active integration if connected, otherwise update local state
+  const handleSetMode = useCallback(async (newMode) => {
+    if (activeIntegration) {
+      try {
+        await activeIntegration.setMode(newMode);
+      } catch (error) {
+        console.error('Failed to set thermostat mode:', error);
+      }
+    } else {
+      setSimulatedMode(newMode);
+    }
+  }, [activeIntegration]);
+  
+  const handleSetAway = useCallback(async (away) => {
+    if (activeIntegration) {
+      try {
+        // Get away mode temps from comfort settings
+        const thermostatSettings = loadThermostatSettings();
+        const awaySettings = thermostatSettings?.comfortSettings?.away;
+        const heatTemp = awaySettings?.heatSetPoint || 62;
+        const coolTemp = awaySettings?.coolSetPoint || 85;
+        await activeIntegration.setAway(away, heatTemp, coolTemp);
+      } catch (error) {
+        console.error('Failed to set away mode:', error);
+      }
+    } else {
+      setSimulatedIsAway(away);
+    }
+  }, [activeIntegration]);
+  
+  // Update local state when integration data changes
+  useEffect(() => {
+    if (activeIntegration && activeIntegration.thermostatData) {
+      // Sync target temp from thermostat
+      if (activeIntegration.targetHeatTemp !== null && mode === 'heat') {
+        setTargetTemp(activeIntegration.targetHeatTemp);
+      } else if (activeIntegration.targetCoolTemp !== null && mode === 'cool') {
+        setTargetTemp(activeIntegration.targetCoolTemp);
+      }
+    }
+  }, [activeIntegration, mode]);
+  
+  // Dehumidifier state tracking for minOnTime/minOffTime enforcement
+  const [dehumidifierState, setDehumidifierState] = useState({
+    isOn: false,
+    lastTurnedOn: null, // timestamp when turned on
+    lastTurnedOff: null, // timestamp when turned off
+  });
+  const [aiInput, setAiInput] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [_isSpeaking, setIsSpeaking] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+
   // Persist speech enabled state to localStorage
   const [speechEnabled, setSpeechEnabled] = useState(() => {
     try {
-      const saved = localStorage.getItem('thermostatSpeechEnabled');
+      const saved = localStorage.getItem("thermostatSpeechEnabled");
       return saved !== null ? JSON.parse(saved) : true; // Default to true (voice on)
     } catch {
       return true;
     }
   });
-  
+
   const [autoSubmitCountdown, setAutoSubmitCountdown] = useState(null);
   const [shouldAutoSubmit, setShouldAutoSubmit] = useState(false);
-  
+
   const recognitionRef = useRef(null);
   const synthRef = useRef(window.speechSynthesis);
   const autoSubmitTimerRef = useRef(null);
@@ -40,17 +280,16 @@ const SmartThermostatDemo = () => {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
     }
-    setAutoSubmitCountdown(null);
     setShouldAutoSubmit(false);
   }, []);
 
   // Start auto-submit countdown
   const startAutoSubmit = useCallback(() => {
     clearAutoSubmitTimers();
-    
+
     let countdown = 5;
     setAutoSubmitCountdown(countdown);
-    
+
     // Update countdown every second
     countdownIntervalRef.current = setInterval(() => {
       countdown -= 1;
@@ -59,7 +298,7 @@ const SmartThermostatDemo = () => {
         clearInterval(countdownIntervalRef.current);
       }
     }, 1000);
-    
+
     // Trigger auto-submit after 5 seconds
     autoSubmitTimerRef.current = setTimeout(() => {
       setShouldAutoSubmit(true);
@@ -68,12 +307,13 @@ const SmartThermostatDemo = () => {
 
   // Initialize speech recognition
   useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
-      
+
       recognitionRef.current.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         setAiInput(transcript);
@@ -81,17 +321,17 @@ const SmartThermostatDemo = () => {
         // Start auto-submit countdown
         startAutoSubmit();
       };
-      
+
       recognitionRef.current.onerror = () => {
         setIsListening(false);
         clearAutoSubmitTimers();
       };
-      
+
       recognitionRef.current.onend = () => {
         setIsListening(false);
       };
     }
-    
+
     // Cleanup on unmount
     return () => {
       clearAutoSubmitTimers();
@@ -101,7 +341,7 @@ const SmartThermostatDemo = () => {
   // Toggle microphone
   const toggleMic = () => {
     if (!recognitionRef.current) return;
-    
+
     if (isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
@@ -116,7 +356,7 @@ const SmartThermostatDemo = () => {
     const newValue = !speechEnabled;
     setSpeechEnabled(newValue);
     try {
-      localStorage.setItem('thermostatSpeechEnabled', JSON.stringify(newValue));
+      localStorage.setItem("thermostatSpeechEnabled", JSON.stringify(newValue));
     } catch {
       // Ignore storage errors
     }
@@ -125,9 +365,9 @@ const SmartThermostatDemo = () => {
   // Check if globally muted (from App.jsx mute button)
   const isGloballyMuted = () => {
     try {
-      const globalMuted = localStorage.getItem('globalMuted');
-      const askJouleMuted = localStorage.getItem('askJouleMuted');
-      return globalMuted === 'true' || askJouleMuted === 'true';
+      const globalMuted = localStorage.getItem("globalMuted");
+      const askJouleMuted = localStorage.getItem("askJouleMuted");
+      return globalMuted === "true" || askJouleMuted === "true";
     } catch {
       return false;
     }
@@ -141,33 +381,33 @@ const SmartThermostatDemo = () => {
         setIsSpeaking(false);
       }
     };
-    
+
     // Check immediately
     checkMute();
-    
+
     // Listen for storage changes (when mute button is clicked)
     const handleStorageChange = (e) => {
-      if (e.key === 'globalMuted' || e.key === 'askJouleMuted') {
+      if (e.key === "globalMuted" || e.key === "askJouleMuted") {
         checkMute();
       }
     };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
+
+    window.addEventListener("storage", handleStorageChange);
+
     // Also poll for changes (since same-origin storage events don't fire)
     const interval = setInterval(checkMute, 500);
-    
+
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener("storage", handleStorageChange);
       clearInterval(interval);
     };
   }, []);
 
   // Speak text
-  const speak = (text) => {
+  const _speak = (text) => {
     // Check both local speechEnabled AND global mute state
     if (!speechEnabled || isGloballyMuted() || !synthRef.current) return;
-    
+
     synthRef.current.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.onstart = () => setIsSpeaking(true);
@@ -175,111 +415,187 @@ const SmartThermostatDemo = () => {
     synthRef.current.speak(utterance);
   };
 
+  // Load thermostat settings for away mode calculation
+  const [thermostatSettings, setThermostatSettings] = useState(() => {
+    try {
+      return loadThermostatSettings();
+    } catch {
+      return null;
+    }
+  });
+
+  // Listen for thermostat settings updates
+  useEffect(() => {
+    const handleSettingsUpdate = () => {
+      try {
+        setThermostatSettings(loadThermostatSettings());
+      } catch {
+        // Ignore errors
+      }
+    };
+    window.addEventListener("thermostatSettingsChanged", handleSettingsUpdate);
+    window.addEventListener("thermostatSettingsUpdated", handleSettingsUpdate);
+    return () => {
+      window.removeEventListener("thermostatSettingsChanged", handleSettingsUpdate);
+      window.removeEventListener("thermostatSettingsUpdated", handleSettingsUpdate);
+    };
+  }, []);
+
   // Calculate effective target with away mode adjustment
   const effectiveTarget = useMemo(() => {
     if (!isAway) return targetTemp;
-    
-    // Away mode adjusts temperature for energy savings
-    const awayOffset = 6;
-    if (mode === 'heat') {
-      return Math.max(60, targetTemp - awayOffset); // Lower heating setpoint
-    } else if (mode === 'cool') {
-      return Math.min(80, targetTemp + awayOffset); // Raise cooling setpoint
-    } else if (mode === 'auto') {
-      // In auto, adjust based on current condition
-      const tempDiff = currentTemp - targetTemp;
-      if (tempDiff > 1) {
-        return Math.min(80, targetTemp + awayOffset); // Cooling needed
-      } else if (tempDiff < -1) {
-        return Math.max(60, targetTemp - awayOffset); // Heating needed
-      }
-    }
-    return targetTemp;
-  }, [isAway, targetTemp, mode, currentTemp]);
 
-  // Handle AI submission
-  const handleAiSubmit = useCallback((e) => {
-    e?.preventDefault();
-    clearAutoSubmitTimers();
-    
-    if (!aiInput.trim()) return;
-    
-    const input = aiInput.toLowerCase().trim();
-    let response = '';
-    
-    // Parse commands
-    if (input.includes('set') && input.includes('to')) {
-      const tempMatch = input.match(/(\d+)/);
-      if (tempMatch) {
-        const temp = parseInt(tempMatch[1]);
-        if (temp >= 60 && temp <= 80) {
-          setTargetTemp(temp);
-          response = `Target temperature set to ${temp} degrees Fahrenheit`;
-        } else {
-          response = `Temperature must be between 60 and 80 degrees`;
+    // Away mode uses temperatures from comfort settings
+    try {
+      const settings = thermostatSettings || loadThermostatSettings();
+      const awaySettings = settings?.comfortSettings?.away;
+      
+      if (awaySettings) {
+        // Use the appropriate setpoint based on current mode
+        if (mode === "heat") {
+          return awaySettings.heatSetPoint || targetTemp;
+        } else if (mode === "cool") {
+          return awaySettings.coolSetPoint || targetTemp;
         }
       }
-    } else if (input.includes('away')) {
-      if (input.includes('on') || input.includes('enable') || input.includes('activate')) {
-        setIsAway(true);
-        response = 'Away mode activated. Adjusting temperature for energy savings.';
-      } else if (input.includes('off') || input.includes('disable') || input.includes('home') || input.includes('back')) {
-        setIsAway(false);
-        response = 'Away mode deactivated. Welcome home!';
-      } else {
-        const newAway = !isAway;
-        setIsAway(newAway);
-        response = newAway ? 'Away mode activated. Adjusting temperature for energy savings.' : 'Away mode deactivated. Welcome home!';
-      }
-    } else if (input.includes('heat')) {
-      setMode('heat');
-      response = 'Heat mode activated';
-    } else if (input.includes('cool')) {
-      setMode('cool');
-      response = 'Cool mode activated';
-    } else if (input.includes('auto')) {
-      setMode('auto');
-      response = 'Auto mode activated';
-    } else if (input.includes('off')) {
-      setMode('off');
-      response = 'System turned off';
-    } else if (input.includes('status') || input.includes('what')) {
-      // Calculate status inline
-      const deadband = 1;
-      const effectiveTargetForStatus = isAway ? effectiveTarget : targetTemp;
-      const tempDiff = currentTemp - effectiveTargetForStatus;
-      let status = 'satisfied';
-      
-      if (mode === 'off') {
-        status = 'off';
-      } else if (tempDiff > deadband && (mode === 'cool' || mode === 'auto')) {
-        status = 'cooling';
-      } else if (tempDiff < -deadband && (mode === 'heat' || mode === 'auto')) {
-        status = 'heating';
-      }
-      
-      const awayStatus = isAway ? ` Away mode is active, effective target is ${effectiveTargetForStatus} degrees.` : '';
-      response = `Current temperature is ${currentTemp} degrees. Target is ${targetTemp} degrees.${awayStatus} System is in ${mode} mode and currently ${status}.`;
-    } else {
-      response = `I heard: "${aiInput}". Try commands like "set to 72", "heat mode", or "what's the status?"`;
+    } catch (e) {
+      console.warn("Failed to load away mode settings:", e);
     }
-    
-    setAiResponse(response);
-    setAiInput('');
-    
-    // Speak response (only if not globally muted)
-    setTimeout(() => {
-      // Check both local speechEnabled AND global mute state
-      if (synthRef.current && response && speechEnabled && !isGloballyMuted()) {
-        synthRef.current.cancel();
-        const utterance = new SpeechSynthesisUtterance(response);
-        utterance.onstart = () => setIsSpeaking(true);
-        utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
-        synthRef.current.speak(utterance);
+
+    // Fallback to old behavior if settings not available
+    const awayOffset = 6;
+    if (mode === "heat") {
+      return Math.max(60, targetTemp - awayOffset);
+    } else if (mode === "cool") {
+      return Math.min(80, targetTemp + awayOffset);
+    }
+    return targetTemp;
+  }, [isAway, targetTemp, mode, currentTemp, thermostatSettings]);
+
+  // Handle AI submission
+  const handleAiSubmit = useCallback(
+    async (e) => {
+      e?.preventDefault();
+      clearAutoSubmitTimers();
+
+      if (!aiInput.trim()) return;
+
+      const input = aiInput.toLowerCase().trim();
+      let response = "";
+
+      // Parse commands
+      if (input.includes("set") && input.includes("to")) {
+        const tempMatch = input.match(/(\d+)/);
+        if (tempMatch) {
+          const temp = parseInt(tempMatch[1]);
+          if (temp >= 60 && temp <= 80) {
+            setTargetTemp(temp);
+            // Update thermostat if connected
+            if (activeIntegration && activeIntegration.setTemperature) {
+              const heatTemp = mode === 'heat' || mode === 'auto' ? temp : (activeIntegration.targetHeatTemp || temp);
+              const coolTemp = mode === 'cool' || mode === 'auto' ? temp : (activeIntegration.targetCoolTemp || temp);
+              await activeIntegration.setTemperature(heatTemp, coolTemp);
+            }
+            // Also update userSettings if setUserSetting is available
+            if (setUserSetting) {
+              setUserSetting("winterThermostat", temp, {
+                source: "SmartThermostatDemo",
+                comment: "Set target temperature via voice command",
+              });
+            }
+            response = `Target temperature set to ${temp} degrees Fahrenheit`;
+          } else {
+            response = `Temperature must be between 60 and 80 degrees`;
+          }
+        }
+      } else if (input.includes("away")) {
+        if (
+          input.includes("on") ||
+          input.includes("enable") ||
+          input.includes("activate")
+        ) {
+          await handleSetAway(true);
+          response =
+            "Away mode activated. Adjusting temperature for energy savings.";
+        } else if (
+          input.includes("off") ||
+          input.includes("disable") ||
+          input.includes("home") ||
+          input.includes("back")
+        ) {
+          await handleSetAway(false);
+          response = "Away mode deactivated. Welcome home!";
+        } else {
+          const newAway = !isAway;
+          await handleSetAway(newAway);
+          response = newAway
+            ? "Away mode activated. Adjusting temperature for energy savings."
+            : "Away mode deactivated. Welcome home!";
+        }
+      } else if (input.includes("heat")) {
+        await handleSetMode("heat");
+        response = "Heat mode activated";
+      } else if (input.includes("cool")) {
+        await handleSetMode("cool");
+        response = "Cool mode activated";
+      } else if (input.includes("off")) {
+        await handleSetMode("off");
+        response = "System turned off";
+      } else if (input.includes("status") || input.includes("what")) {
+        // Calculate status inline
+        const deadband = 1;
+        const effectiveTargetForStatus = isAway ? effectiveTarget : targetTemp;
+        const tempDiff = currentTemp - effectiveTargetForStatus;
+        let status = "satisfied";
+
+        if (mode === "off") {
+          status = "off";
+        } else if (tempDiff > deadband && mode === "cool") {
+          status = "cooling";
+        } else if (tempDiff < -deadband && mode === "heat") {
+          status = "heating";
+        }
+
+        const awayStatus = isAway
+          ? ` Away mode is active, effective target is ${effectiveTargetForStatus} degrees.`
+          : "";
+        response = `Current temperature is ${currentTemp} degrees. Target is ${targetTemp} degrees.${awayStatus} System is in ${mode} mode and currently ${status}.`;
+      } else {
+        response = `I heard: "${aiInput}". Try commands like "set to 72", "heat mode", or "what's the status?"`;
       }
-    }, 100);
-  }, [aiInput, currentTemp, targetTemp, mode, isAway, effectiveTarget, clearAutoSubmitTimers, speechEnabled]);
+
+      setAiResponse(response);
+      setAiInput("");
+
+      // Speak response (only if not globally muted)
+      setTimeout(() => {
+        // Check both local speechEnabled AND global mute state
+        if (
+          synthRef.current &&
+          response &&
+          speechEnabled &&
+          !isGloballyMuted()
+        ) {
+          synthRef.current.cancel();
+          const utterance = new SpeechSynthesisUtterance(response);
+          utterance.onstart = () => setIsSpeaking(true);
+          utterance.onend = () => setIsSpeaking(false);
+          utterance.onerror = () => setIsSpeaking(false);
+          synthRef.current.speak(utterance);
+        }
+      }, 100);
+    },
+    [
+      aiInput,
+      currentTemp,
+      targetTemp,
+      mode,
+      isAway,
+      effectiveTarget,
+      clearAutoSubmitTimers,
+      speechEnabled,
+    ]
+  );
 
   // Auto-submit when flag is set
   useEffect(() => {
@@ -290,593 +606,528 @@ const SmartThermostatDemo = () => {
     }
   }, [shouldAutoSubmit, handleAiSubmit, clearAutoSubmitTimers]);
 
-  // Thermostat logic with 2° deadband (uses effectiveTarget for away mode)
+  // Get current humidity setpoint from thermostat settings
+  // Include settingsVersion in dependency array so it updates when humidity setpoint changes
+  const humiditySetpoint = useMemo(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const currentComfort = isAway ? "away" : "home";
+      return thermostatSettings?.comfortSettings?.[currentComfort]?.humiditySetPoint || 50;
+    } catch {
+      return 50;
+    }
+  }, [isAway, settingsVersion]);
+
+  // Get dehumidifier settings
+  // Include settingsVersion in dependency array so it updates when settings change
+  const dehumidifierSettings = useMemo(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      return thermostatSettings?.dehumidifier || {
+        enabled: false,
+        humidityDeadband: 5,
+        minOnTime: 300,
+        minOffTime: 300,
+        relayTerminal: "Y2",
+      };
+    } catch {
+      return {
+        enabled: false,
+        humidityDeadband: 5,
+        minOnTime: 300,
+        minOffTime: 300,
+        relayTerminal: "Y2",
+      };
+    }
+  }, [settingsVersion]);
+
+  // Reset dehumidifier state when disabled
+  useEffect(() => {
+    if (!dehumidifierSettings.enabled && dehumidifierState.isOn) {
+      setDehumidifierState({
+        isOn: false,
+        lastTurnedOn: null,
+        lastTurnedOff: Date.now(),
+      });
+    }
+  }, [dehumidifierSettings.enabled, dehumidifierState.isOn]);
+
+  // Determine desired dehumidifier state based on humidity conditions
+  const desiredDehumidifierState = useMemo(() => {
+    if (!dehumidifierSettings.enabled) {
+      return false;
+    }
+
+    const humidityDiff = currentHumidity - humiditySetpoint;
+    const humidityDeadband = dehumidifierSettings.humidityDeadband || 5;
+    
+    // Desired state: on if humidity is above setpoint + deadband
+    return humidityDiff > humidityDeadband;
+  }, [currentHumidity, humiditySetpoint, dehumidifierSettings]);
+
+  // Update dehumidifier state when desired state changes, respecting minOnTime/minOffTime
+  useEffect(() => {
+    if (!dehumidifierSettings.enabled) {
+      return;
+    }
+
+    const now = Date.now();
+    const minOnTimeMs = (dehumidifierSettings.minOnTime || 300) * 1000;
+    const minOffTimeMs = (dehumidifierSettings.minOffTime || 300) * 1000;
+
+    // If dehumidifier should be on
+    if (desiredDehumidifierState) {
+      // Check if we can turn it on (respecting minOffTime)
+      if (!dehumidifierState.isOn) {
+        if (!dehumidifierState.lastTurnedOff || (now - dehumidifierState.lastTurnedOff) >= minOffTimeMs) {
+          // Can turn on - minimum off time has elapsed
+          setDehumidifierState({
+            isOn: true,
+            lastTurnedOn: now,
+            lastTurnedOff: dehumidifierState.lastTurnedOff,
+          });
+        }
+        // Otherwise, keep it off (still within minOffTime)
+      }
+      // If already on, keep it on (will be enforced by minOnTime check)
+    } else {
+      // If dehumidifier should be off
+      if (dehumidifierState.isOn) {
+        // Check if we can turn it off (respecting minOnTime)
+        if (!dehumidifierState.lastTurnedOn || (now - dehumidifierState.lastTurnedOn) >= minOnTimeMs) {
+          // Can turn off - minimum on time has elapsed
+          setDehumidifierState({
+            isOn: false,
+            lastTurnedOn: dehumidifierState.lastTurnedOn,
+            lastTurnedOff: now,
+          });
+        }
+        // Otherwise, keep it on (still within minOnTime)
+      }
+    }
+  }, [desiredDehumidifierState, dehumidifierState, dehumidifierSettings]);
+
+  // Control ProStat Bridge relay when dehumidifier state changes
+  useEffect(() => {
+    if (bridgeAvailable && prostatRelay.connected && dehumidifierSettings.enabled) {
+      // Sync dehumidifier state with relay
+      if (dehumidifierState.isOn !== prostatRelay.relayOn) {
+        if (dehumidifierState.isOn) {
+          prostatRelay.turnOn().catch(err => {
+            console.warn('Failed to turn on dehumidifier relay:', err);
+          });
+        } else {
+          prostatRelay.turnOff().catch(err => {
+            console.warn('Failed to turn off dehumidifier relay:', err);
+          });
+        }
+      }
+    }
+  }, [bridgeAvailable, prostatRelay.connected, dehumidifierState.isOn, prostatRelay.relayOn, dehumidifierSettings.enabled, prostatRelay]);
+
+  // Thermostat logic with 1° deadband (uses effectiveTarget for away mode)
+  // Also includes dehumidifier control logic with minOnTime/minOffTime enforcement
   const thermostatState = useMemo(() => {
     const deadband = 1;
     const tempDiff = currentTemp - effectiveTarget;
-    
-    if (mode === 'off') {
-      return { status: 'Off', activeCall: null, statusColor: 'text-gray-600' };
-    }
-    
-    // Call for cooling
-    if (tempDiff > deadband) {
-      if (mode === 'cool' || mode === 'auto') {
-        return { status: 'Cooling', activeCall: 'Y1', statusColor: 'text-cyan-600' };
+
+    if (mode === "off") {
+      // Even in off mode, check dehumidifier if enabled
+      if (dehumidifierSettings.enabled && dehumidifierState.isOn) {
+        return {
+          status: "Dehumidifying",
+          activeCall: dehumidifierSettings.relayTerminal || "Y2",
+          statusColor: "text-blue-600",
+        };
       }
+      return { status: "Off", activeCall: null, statusColor: "text-gray-600" };
     }
-    
-    // Call for heating
-    if (tempDiff < -deadband) {
-      if (mode === 'heat' || mode === 'auto') {
-        return { status: 'Heating', activeCall: 'W1', statusColor: 'text-orange-600' };
+
+    // Priority 1: Temperature control (heating/cooling)
+    // Call for cooling - current temp is above target + deadband
+    if (tempDiff > deadband && mode === "cool") {
+      return {
+        status: "Cooling",
+        activeCall: "Y1",
+        statusColor: "text-cyan-600",
+      };
+    }
+
+    // Call for heating - current temp is below target - deadband
+    if (tempDiff < -deadband && mode === "heat") {
+      return {
+        status: "Heating",
+        activeCall: "W1",
+        statusColor: "text-orange-600",
+      };
+    }
+
+    // Check if temperature is actually satisfied (within deadband)
+    // For heating: current should be >= target - deadband
+    // For cooling: current should be <= target + deadband
+    const isTempSatisfied = 
+      (mode === "heat" && tempDiff >= -deadband) ||
+      (mode === "cool" && tempDiff <= deadband);
+
+    // Only show "Satisfied" if temperature is actually at target
+    // Priority 2: Humidity control (dehumidifier) - only if temp is satisfied
+    if (isTempSatisfied) {
+      // Use actual dehumidifier state (which respects minOnTime/minOffTime)
+      if (dehumidifierSettings.enabled && dehumidifierState.isOn) {
+        return {
+          status: "Dehumidifying",
+          activeCall: dehumidifierSettings.relayTerminal || "Y2",
+          statusColor: "text-blue-600",
+        };
       }
+
+      return {
+        status: "Satisfied",
+        activeCall: null,
+        statusColor: "text-green-600",
+      };
     }
-    
-    return { status: 'Satisfied', activeCall: null, statusColor: 'text-green-600' };
-  }, [currentTemp, effectiveTarget, mode]);
+
+    // If we get here, temperature is not satisfied but also not calling for heat/cool
+    // This shouldn't normally happen, but show a warning status
+    return {
+      status: mode === "heat" ? "Waiting" : "Idle",
+      activeCall: null,
+      statusColor: "text-yellow-600",
+    };
+  }, [currentTemp, effectiveTarget, mode, dehumidifierSettings, dehumidifierState]);
+
+  // Update system state for interlock logic when data changes
+  useEffect(() => {
+    if (bridgeAvailable && prostatBridge.connected && prostatRelay.connected) {
+      // Update system state with current readings
+      prostatRelay.updateState({
+        indoor_temp: currentTemp,
+        indoor_humidity: currentHumidity,
+        outdoor_temp: null, // TODO: Get from weather API or sensor
+        hvac_mode: mode,
+        hvac_running: thermostatState.status !== 'Idle',
+      }).catch(err => {
+        console.warn('Failed to update system state:', err);
+      });
+    }
+  }, [bridgeAvailable, prostatBridge.connected, prostatRelay.connected, currentTemp, currentHumidity, mode, thermostatState.status, prostatRelay]);
+
+  // Get Groq model and location for status bar
+  const groqModel = useMemo(() => {
+    try {
+      return localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+    } catch {
+      return "llama-3.1-8b-instant";
+    }
+  }, []);
+
+  const locationDisplay = useMemo(() => {
+    if (userLocation?.city && userLocation?.state) {
+      return `${userLocation.city}, ${userLocation.state}`;
+    }
+    return "Location not set";
+  }, [userLocation]);
+
+  const handleTargetTempChange = useCallback((newTemp) => {
+    setTargetTemp(newTemp);
+    // Update thermostat if connected
+    if (activeIntegration && activeIntegration.setTemperature) {
+      const heatTemp = mode === 'heat' || mode === 'auto' ? newTemp : (activeIntegration.targetHeatTemp || newTemp);
+      const coolTemp = mode === 'cool' || mode === 'auto' ? newTemp : (activeIntegration.targetCoolTemp || newTemp);
+      activeIntegration.setTemperature(heatTemp, coolTemp).catch(err => {
+        console.error('Failed to set temperature:', err);
+      });
+    }
+    // Also update userSettings if setUserSetting is available
+    if (setUserSetting) {
+      setUserSetting("winterThermostat", newTemp, {
+        source: "SmartThermostatDemo",
+        comment: "Set target temperature via slider",
+      });
+    }
+  }, [activeIntegration, mode, setUserSetting]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900 dark:to-gray-900 p-4 md:p-8">
+    <div className="page-gradient-overlay min-h-screen">
       <style>{`
-        @keyframes pulse-glow {
-          0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
-          50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.8); }
+        @keyframes pulse-subtle {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
         }
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-10px); }
-        }
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
-        .float { animation: float 3s ease-in-out infinite; }
-        .spin-slow { animation: spin-slow 20s linear infinite; }
-        
-        .gradient-border {
-          position: relative;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          padding: 3px;
-          border-radius: 24px;
-        }
-        
-        .gradient-border-inner {
-          background: white;
-          border-radius: 21px;
-        }
-        
-        .dark .gradient-border-inner {
-          background: #1f2937;
-        }
-        
-        .glassmorphism {
-          background: rgba(255, 255, 255, 0.1);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        .dark .glassmorphism {
-          background: rgba(0, 0, 0, 0.2);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-        }
+        .pulse-subtle { animation: pulse-subtle 2s ease-in-out infinite; }
       `}</style>
 
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <header className="mb-8">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Joule
-                </h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Smart Thermostat Control</p>
-              </div>
+      {/* Main Content */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+        {/* Page Header */}
+        <div className="mb-8 animate-fade-in-up">
+          <div className="flex items-center gap-4 mb-3">
+            <div className="icon-container icon-container-gradient">
+              <Thermometer className="w-6 h-6" />
             </div>
-            <nav className="flex gap-2 flex-wrap">
-              <button 
-                onClick={() => navigate('/')}
-                className="px-4 py-2 text-sm font-medium bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg shadow-lg hover:shadow-xl transition-all"
-              >
-                Home
-              </button>
-              <button 
-                onClick={() => navigate('/dashboard')}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all"
-              >
-                Dashboard
-              </button>
-              <button 
-                onClick={() => navigate('/cost-forecaster')}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all"
-              >
-                Forecast
-              </button>
-              <button 
-                onClick={() => navigate('/monthly-budget')}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all"
-              >
-                Budget
-              </button>
-              <button 
-                onClick={() => navigate('/agent-console')}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all"
-              >
-                Agent
-              </button>
-            </nav>
-          </div>
-        </header>
-
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Main Thermostat Display */}
-          <div className="lg:col-span-2">
-            <div className="gradient-border shadow-2xl">
-              <div className="gradient-border-inner p-8">
-                {/* Status Bar */}
-                <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                      <div className="absolute inset-0 bg-green-500 rounded-full animate-ping opacity-75"></div>
-                    </div>
-                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">AI Mode Active</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">Voice enabled</span>
-                    <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all">
-                      <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"/>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Temperature Display */}
-                <div className="text-center mb-8">
-                  <div className="relative inline-block">
-                    {/* Decorative ring */}
-                    <div className="absolute inset-0 rounded-full opacity-20 spin-slow" style={{background: 'conic-gradient(from 0deg, #3b82f6, #8b5cf6, #ec4899, #3b82f6)'}}></div>
-                    
-                    {/* Main temperature circle */}
-                    <div className="relative bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900 rounded-full p-12 shadow-inner">
-                      <div className="text-center">
-                        <div className="text-7xl font-bold bg-gradient-to-br from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-                          {currentTemp}°
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Current</div>
-                        <div className="h-1 w-16 mx-auto bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
-                        <div className="text-lg font-semibold text-gray-700 dark:text-gray-300 mt-3">
-                          Target: {isAway ? effectiveTarget : targetTemp}°
-                          {isAway && (
-                            <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                              (Away: {targetTemp}° → {effectiveTarget}°)
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* System Status Cards */}
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  <div className="glassmorphism p-4 rounded-xl text-center">
-                    <div className="text-2xl mb-2">🌡️</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Mode</div>
-                    <div className="text-sm font-bold text-gray-800 dark:text-gray-200 capitalize">{mode}</div>
-                  </div>
-                  <div className="glassmorphism p-4 rounded-xl text-center">
-                    <div className="text-2xl mb-2">{thermostatState.status === 'Cooling' ? '❄️' : thermostatState.status === 'Heating' ? '🔥' : '✓'}</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Status</div>
-                    <div className={`text-sm font-bold ${thermostatState.statusColor}`}>{thermostatState.status}</div>
-                  </div>
-                  <button 
-                    onClick={() => setIsAway(!isAway)}
-                    className={`glassmorphism p-4 rounded-xl text-center transition-all hover:scale-105 ${
-                      isAway ? 'ring-2 ring-blue-500' : ''
-                    }`}
-                    title={isAway ? 'Click to return home' : 'Click to activate away mode'}
-                  >
-                    <div className="text-2xl mb-2">{isAway ? '🚗' : '🏠'}</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Mode</div>
-                    <div className={`text-sm font-bold ${isAway ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                      {isAway ? 'Away' : 'Home'}
-                    </div>
-                    {isAway && (
-                      <div className="text-xs text-green-600 dark:text-green-400 mt-1">💰 Saving</div>
-                    )}
-                  </button>
-                </div>
-
-                {/* Temperature Sliders */}
-                <div className="mb-6 space-y-4">
-                  {/* Target Temperature */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Target Temperature</span>
-                      <span className="text-xs text-gray-500">60°F - 80°F</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="60" 
-                      max="80" 
-                      value={targetTemp}
-                      onChange={(e) => setTargetTemp(Number(e.target.value))}
-                      className="w-full h-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-0"
-                    />
-                    <div className="flex justify-between text-xs text-gray-500 mt-2">
-                      <span>60°</span>
-                      <span className="font-semibold text-purple-600 dark:text-purple-400">{targetTemp}°</span>
-                      <span>80°</span>
-                    </div>
-                  </div>
-                  
-                  {/* Current Temperature (Simulated) */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Current Temperature <span className="text-xs text-gray-500">(simulated)</span>
-                      </span>
-                      <span className="text-xs text-gray-500">60°F - 80°F</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="60" 
-                      max="80" 
-                      value={currentTemp}
-                      onChange={(e) => setCurrentTemp(Number(e.target.value))}
-                      className="w-full h-3 bg-gradient-to-r from-cyan-400 via-gray-400 to-orange-400 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-0"
-                    />
-                    <div className="flex justify-between text-xs text-gray-500 mt-2">
-                      <span>60°</span>
-                      <span className="font-semibold text-blue-600 dark:text-blue-400">{currentTemp}°</span>
-                      <span>80°</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick Actions */}
-                <div className="space-y-3">
-                  <div className="grid grid-cols-4 gap-3">
-                    <button 
-                      onClick={() => setMode('heat')}
-                      className={`p-3 ${mode === 'heat' ? 'bg-gradient-to-br from-orange-600 to-red-600 ring-2 ring-orange-400' : 'bg-gradient-to-br from-orange-500 to-red-500'} hover:from-orange-600 hover:to-red-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all`}
-                    >
-                      <div className="text-xl mb-1">🔥</div>
-                      <div className="text-xs font-medium">Heat</div>
-                    </button>
-                    <button 
-                      onClick={() => setMode('cool')}
-                      className={`p-3 ${mode === 'cool' ? 'bg-gradient-to-br from-cyan-600 to-blue-600 ring-2 ring-cyan-400' : 'bg-gradient-to-br from-cyan-500 to-blue-500'} hover:from-cyan-600 hover:to-blue-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all`}
-                    >
-                      <div className="text-xl mb-1">❄️</div>
-                      <div className="text-xs font-medium">Cool</div>
-                    </button>
-                    <button 
-                      onClick={() => setMode('auto')}
-                      className={`p-3 ${mode === 'auto' ? 'bg-gradient-to-br from-green-600 to-emerald-600 ring-2 ring-green-400' : 'bg-gradient-to-br from-green-500 to-emerald-500'} hover:from-green-600 hover:to-emerald-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all`}
-                    >
-                      <div className="text-xl mb-1">🌬️</div>
-                      <div className="text-xs font-medium">Auto</div>
-                    </button>
-                    <button 
-                      onClick={() => setMode('off')}
-                      className={`p-3 ${mode === 'off' ? 'bg-gradient-to-br from-gray-600 to-gray-700 ring-2 ring-gray-400' : 'bg-gradient-to-br from-gray-500 to-gray-600'} hover:from-gray-600 hover:to-gray-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all`}
-                    >
-                      <div className="text-xl mb-1">⭕</div>
-                      <div className="text-xs font-medium">Off</div>
-                    </button>
-                  </div>
-                  
-                  {/* Away Mode Button */}
-                  <button 
-                    onClick={() => setIsAway(!isAway)}
-                    className={`w-full p-3 ${isAway ? 'bg-gradient-to-br from-purple-600 to-blue-600 ring-2 ring-purple-400' : 'bg-gradient-to-br from-purple-500 to-blue-500'} hover:from-purple-600 hover:to-blue-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all`}
-                  >
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="text-xl">{isAway ? '🚗' : '🏠'}</div>
-                      <div className="text-sm font-medium">{isAway ? 'Away Mode Active - Click to Return Home' : 'Activate Away Mode'}</div>
-                      {isAway && <div className="text-lg">💰</div>}
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Contactor Visualization */}
-            <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200">Contactor Status</h3>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                  <span className="text-xs text-gray-600 dark:text-gray-400">24 VAC Active</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {/* Y1 (Cool) Contactor */}
-                <div className={`text-center p-4 rounded-lg border-2 ${thermostatState.activeCall === 'Y1' ? 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-500' : 'bg-gray-50 dark:bg-gray-700 border-gray-300'}`}>
-                  <div className={`w-12 h-12 mx-auto mb-2 rounded-full flex items-center justify-center ${thermostatState.activeCall === 'Y1' ? 'bg-cyan-200 dark:bg-cyan-700 pulse-glow' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                    <div className={`w-6 h-6 rounded-full ${thermostatState.activeCall === 'Y1' ? 'bg-cyan-500' : 'bg-gray-500'}`}></div>
-                  </div>
-                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Y1 (Cool)</div>
-                  <div className={`text-xs mt-1 font-bold ${thermostatState.activeCall === 'Y1' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-500'}`}>
-                    {thermostatState.activeCall === 'Y1' ? 'ON' : 'OFF'}
-                  </div>
-                </div>
-                
-                {/* W1 (Heat) Contactor */}
-                <div className={`text-center p-4 rounded-lg border-2 ${thermostatState.activeCall === 'W1' ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-500' : 'bg-gray-50 dark:bg-gray-700 border-gray-300'}`}>
-                  <div className={`w-12 h-12 mx-auto mb-2 rounded-full flex items-center justify-center ${thermostatState.activeCall === 'W1' ? 'bg-orange-200 dark:bg-orange-700 pulse-glow' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                    <div className={`w-6 h-6 rounded-full ${thermostatState.activeCall === 'W1' ? 'bg-orange-500' : 'bg-gray-500'}`}></div>
-                  </div>
-                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300">W1 (Heat)</div>
-                  <div className={`text-xs mt-1 font-bold ${thermostatState.activeCall === 'W1' ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500'}`}>
-                    {thermostatState.activeCall === 'W1' ? 'ON' : 'OFF'}
-                  </div>
-                </div>
-                
-                {/* G (Fan) Contactor */}
-                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border-2 border-gray-300">
-                  <div className="w-12 h-12 mx-auto mb-2 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
-                    <div className="w-6 h-6 bg-gray-500 rounded-full"></div>
-                  </div>
-                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300">G (Fan)</div>
-                  <div className="text-xs text-gray-500 mt-1">OFF</div>
-                </div>
-                
-                {/* OB (Reversing Valve) Contactor */}
-                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border-2 border-gray-300">
-                  <div className="w-12 h-12 mx-auto mb-2 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
-                    <div className="w-6 h-6 bg-gray-500 rounded-full"></div>
-                  </div>
-                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300">OB (Rev)</div>
-                  <div className="text-xs text-gray-500 mt-1">OFF</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* AI Assistant Panel */}
-          <div className="lg:col-span-1">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 lg:sticky lg:top-4">
-              {/* AI Header */}
-              <div className="mb-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center float">
-                    <span className="text-xl">🤖</span>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-800 dark:text-gray-200">Ask Joule</h3>
-                    <p className="text-xs text-gray-500">AI-powered assistant</p>
-                  </div>
-                </div>
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
-                  <p className="text-xs text-gray-700 dark:text-gray-300">
-                    Natural language commands, what-if scenarios, and insights
-                  </p>
-                </div>
-              </div>
-
-              {/* Quick Suggestions */}
-              <div className="mb-6">
-                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-3">Try asking:</p>
-                <div className="space-y-2">
-                  <button 
-                    onClick={() => {
-                      setAiInput("what's the status?");
-                      setTimeout(() => handleAiSubmit(), 50);
-                    }}
-                    className="w-full text-left p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-800/40 dark:hover:to-blue-700/40 rounded-lg text-sm text-gray-700 dark:text-gray-300 transition-all"
-                  >
-                    💡 "What's the status?"
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setAiInput("set to 68");
-                      setTimeout(() => handleAiSubmit(), 50);
-                    }}
-                    className="w-full text-left p-3 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-800/40 dark:hover:to-purple-700/40 rounded-lg text-sm text-gray-700 dark:text-gray-300 transition-all"
-                  >
-                    🌡️ "Set to 68"
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setAiInput(isAway ? "I'm home" : "away mode");
-                      setTimeout(() => handleAiSubmit(), 50);
-                    }}
-                    className="w-full text-left p-3 bg-gradient-to-r from-pink-50 to-pink-100 dark:from-pink-900/30 dark:to-pink-800/30 hover:from-pink-100 hover:to-pink-200 dark:hover:from-pink-800/40 dark:hover:to-pink-700/40 rounded-lg text-sm text-gray-700 dark:text-gray-300 transition-all"
-                  >
-                    {isAway ? '🏠 "I\'m home"' : '🚗 "Away mode"'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Voice Controls */}
-              <div className="mb-6 flex gap-2">
-                <button
-                  onClick={toggleMic}
-                  className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg transition-all ${
-                    isListening
-                      ? 'bg-red-500 text-white animate-pulse'
-                      : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
-                  }`}
-                  title={isListening ? 'Stop listening' : 'Start voice input'}
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"/>
-                  </svg>
-                  <span className="text-xs font-medium">{isListening ? 'Listening...' : 'Mic'}</span>
-                </button>
-                
-                <button
-                  onClick={toggleSpeech}
-                  className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg transition-all ${
-                    speechEnabled
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
-                  }`}
-                  title={speechEnabled ? 'Disable voice responses' : 'Enable voice responses'}
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    {speechEnabled ? (
-                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
-                    ) : (
-                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clipRule="evenodd" />
-                    )}
-                  </svg>
-                  <span className="text-xs font-medium">{speechEnabled ? 'Voice On' : 'Voice Off'}</span>
-                  {isSpeaking && <span className="text-xs">🔊</span>}
-                </button>
-              </div>
-
-              {/* Status Indicators */}
-              <div className="mb-6 space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
-                    </svg>
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">AI Model</span>
-                  </div>
-                  <span className="text-xs text-purple-600 dark:text-purple-400 font-mono font-semibold">llama-3.1-8b</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd"/>
-                    </svg>
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Location</span>
-                  </div>
-                  <span className="text-xs text-green-600 dark:text-green-400 font-semibold">Blairsville, GA</span>
-                </div>
-              </div>
-
-              {/* AI Response Area */}
-              {aiResponse && (
-                <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-start gap-2">
-                    <div className="text-2xl">🤖</div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-700 dark:text-gray-300">{aiResponse}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Auto-submit Countdown Indicator */}
-              {autoSubmitCountdown !== null && (
-                <div className="mb-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg flex items-center justify-between">
-                  <span className="text-xs text-yellow-800 dark:text-yellow-300">
-                    ⏱️ Auto-sending in {autoSubmitCountdown}s...
-                  </span>
-                  <button
-                    type="button"
-                    onClick={clearAutoSubmitTimers}
-                    className="text-xs text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-200 underline"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-
-              {/* Input Area */}
-              <form onSubmit={handleAiSubmit} className="relative">
-                <textarea 
-                  placeholder="💬 Type your question here..." 
-                  rows="3"
-                  value={aiInput}
-                  onChange={(e) => {
-                    setAiInput(e.target.value);
-                    // Cancel auto-submit if user starts typing
-                    if (autoSubmitCountdown !== null) {
-                      clearAutoSubmitTimers();
-                    }
-                  }}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleAiSubmit(e);
-                    }
-                  }}
-                  className="w-full p-4 pr-12 border-2 border-gray-200 dark:border-gray-600 rounded-xl resize-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800 dark:bg-gray-700 dark:text-gray-200 transition-all"
-                ></textarea>
-                <button 
-                  type="submit"
-                  disabled={!aiInput.trim()}
-                  className="absolute bottom-4 right-4 p-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-110"
-                  title="Send message"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
-                  </svg>
-                </button>
-              </form>
-
-              {/* Help Link */}
-              <div className="mt-4 text-center">
-                <button 
-                  onClick={() => navigate('/ask-joule-help')}
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center gap-1"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/>
-                  </svg>
-                  View command list & user manual
-                </button>
-              </div>
+            <div>
+              <h1 className="heading-primary">
+                Smart Thermostat Control
+              </h1>
+              <p className="text-muted mt-1">
+                Monitor and control your home's temperature and humidity
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Additional Info Bar */}
-        <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4">
-          <div className="flex items-center justify-between text-sm flex-wrap gap-4">
-            <div className="flex items-center gap-6 flex-wrap">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-glass">
+          
+          {/* Left: Temperature Control */}
+          <div className="glass-card p-glass-lg animate-fade-in-up">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="heading-tertiary">Manual Control</h2>
               <div className="flex items-center gap-2">
-                <span className="text-gray-600 dark:text-gray-400">CPU Temp:</span>
-                <span className="font-semibold text-gray-800 dark:text-gray-200">Offline</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-600 dark:text-gray-400">Source:</span>
-                <span className="font-semibold text-gray-800 dark:text-gray-200">Manual</span>
+                {speechEnabled ? (
+                  <>
+                    <Mic className="w-4 h-4 text-cyan-500" />
+                    <span className="text-xs text-cyan-500">Voice enabled</span>
+                  </>
+                ) : (
+                  <MicOff className="w-4 h-4 text-muted" title="Voice disabled" />
+                )}
               </div>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <button 
-                onClick={() => {
-                  try {
-                    localStorage.removeItem('hasCompletedOnboarding');
-                  } catch {
-                    // Ignore localStorage errors
-                  }
-                  navigate('/cost-forecaster');
+            
+            <div className="text-center mb-8">
+              <div className="text-7xl font-bold mb-2 text-high-contrast">{currentTemp}°F</div>
+              <div className="text-muted text-sm">CURRENT TEMPERATURE</div>
+              <div className="text-muted text-xs mt-1">Target: {isAway ? effectiveTarget : targetTemp}°F</div>
+            </div>
+            
+            <div className="space-y-6">
+              {/* Temperature Slider */}
+              <div>
+                <div className="flex justify-between text-xs text-muted mb-2">
+                  <span>60°F</span>
+                  <span>80°F</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="60" 
+                  max="80" 
+                  value={isAway ? effectiveTarget : targetTemp}
+                  onChange={(e) => handleTargetTempChange(parseInt(e.target.value))}
+                  className="w-full h-2 bg-slate-700 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                />
+              </div>
+              
+              {/* Humidity and Mode Cards */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="glass-card p-glass-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Droplets className="w-4 h-4 text-blue-500" />
+                    <span className="text-xs text-muted">HUMIDITY</span>
+                  </div>
+                  <div className="text-2xl font-bold text-high-contrast">{currentHumidity}%</div>
+                  <div className="text-xs text-muted">Target: {humiditySetpoint}%</div>
+                </div>
+                
+                <div className="glass-card p-glass-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Wind className="w-4 h-4 text-orange-500" />
+                    <span className="text-xs text-muted">MODE</span>
+                  </div>
+                  <div className="text-2xl font-bold capitalize text-high-contrast">{mode}</div>
+                  <div className={`text-xs ${
+                    thermostatState.statusColor === 'text-green-600' ? 'text-green-500' : 
+                    thermostatState.statusColor === 'text-orange-600' ? 'text-orange-500' : 
+                    thermostatState.statusColor === 'text-cyan-600' ? 'text-cyan-500' : 
+                    'text-muted'
+                  }`}>
+                    {thermostatState.status === "Satisfied" && "✓ Satisfied"}
+                    {thermostatState.status === "Heating" && "Heating"}
+                    {thermostatState.status === "Cooling" && "Cooling"}
+                    {thermostatState.status === "Dehumidifying" && "Dehumidifying"}
+                    {thermostatState.status === "Off" && "Off"}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Target Humidity Slider */}
+              <div>
+                <label className="text-xs text-muted mb-2 block">Target Humidity: {humiditySetpoint}%</label>
+                <div className="flex justify-between text-xs text-muted mb-2">
+                  <span>30%</span>
+                  <span>80%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="30" 
+                  max="80" 
+                  value={humiditySetpoint}
+                  onChange={(e) => {
+                    const newHumidity = Number(e.target.value);
+                    try {
+                      const thermostatSettings = loadThermostatSettings();
+                      const currentComfort = isAway ? "away" : "home";
+                      
+                      if (!thermostatSettings.comfortSettings) {
+                        thermostatSettings.comfortSettings = {};
+                      }
+                      if (!thermostatSettings.comfortSettings[currentComfort]) {
+                        thermostatSettings.comfortSettings[currentComfort] = {};
+                      }
+                      thermostatSettings.comfortSettings[currentComfort].humiditySetPoint = newHumidity;
+                      
+                      saveThermostatSettings(thermostatSettings);
+                      
+                      window.dispatchEvent(new CustomEvent("thermostatSettingsUpdated", {
+                        detail: {
+                          comfortSettings: thermostatSettings.comfortSettings
+                        }
+                      }));
+                      
+                      setSettingsVersion(prev => prev + 1);
+                    } catch (err) {
+                      console.error("Failed to update humidity setpoint:", err);
+                    }
+                  }}
+                  className="w-full h-2 bg-slate-700 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                />
+              </div>
+              
+              {/* Away Mode Button */}
+              <button
+                onClick={() => handleSetAway(!isAway)}
+                className={`w-full p-3 rounded-lg transition-all ${
+                  isAway
+                    ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg"
+                    : "btn-glass text-high-contrast"
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <Home className={`w-4 h-4 ${isAway ? 'opacity-0' : ''}`} />
+                  <span className="text-sm font-medium">
+                    {isAway ? "Away Mode Active" : "Activate Away Mode"}
+                  </span>
+                </div>
+              </button>
+              
+              {/* Schedule Button */}
+              <button
+                onClick={() => setShowScheduleModal(true)}
+                className="btn-glass w-full flex items-center justify-center gap-2"
+              >
+                <Clock className="w-4 h-4" />
+                <span className="text-sm font-medium">Schedule</span>
+              </button>
+            </div>
+          </div>
+          
+          {/* Center: AI Assistant */}
+          <div className="lg:col-span-2 glass-card p-glass-lg flex flex-col animate-fade-in-up">
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="icon-container icon-container-gradient">
+                  <MessageSquare className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="heading-secondary">Ask Joule</h2>
+                  <p className="text-sm text-muted">Voice assistant</p>
+                </div>
+              </div>
+              
+              <p className="text-muted text-sm mb-3">
+                Ask about your home's efficiency, comfort, or costs. Get answers based on your settings and usage data.
+              </p>
+            </div>
+            
+            {/* Ask Joule Component */}
+            <div className="flex-1 min-h-[400px]">
+              <AskJoule
+                hasLocation={!!(userSettings?.location || userLocation)}
+                userLocation={userLocation || (userSettings?.location ? { city: userSettings.location, state: userSettings.state || "GA" } : null)}
+                userSettings={userSettings}
+                annualEstimate={null}
+                recommendations={[]}
+                onNavigate={(path) => {
+                  if (path) navigate(path);
                 }}
-                className="px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-800 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all hover:scale-105"
-                title="Edit your home details and HVAC settings"
-              >
-                ⚙️ Edit Home Details
-              </button>
-              <button 
-                onClick={() => navigate('/dashboard')}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all hover:scale-105"
-              >
-                🔍 Comprehensive Analysis
-              </button>
+                onSettingChange={(key, value, meta = {}) => {
+                  if (typeof setUserSetting === "function") {
+                    setUserSetting(key, value, {
+                      ...meta,
+                      source: meta?.source || "AskJoule",
+                    });
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+        
+        {/* Status Bar */}
+        <div className="mt-6 glass-card p-glass animate-fade-in-up">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-6">
+              <span className="text-muted">Location: <span className="text-high-contrast">{locationDisplay}</span></span>
+              <span className="text-muted">AI Model: <span className="text-cyan-500">{groqModel}</span></span>
+              <span className="text-green-500">● AI Mode Active</span>
+              {useProstatIntegration && (
+                <span className="text-muted">
+                  Bridge: <span className={prostatBridge.connected ? "text-green-500" : "text-red-500"}>
+                    {prostatBridge.connected ? "Connected" : "Disconnected"}
+                  </span>
+                </span>
+              )}
+              {useEcobeeIntegration && !useProstatIntegration && (
+                <span className="text-muted">
+                  Ecobee: <span className={ecobee.connected ? "text-green-500" : "text-red-500"}>
+                    {ecobee.connected ? "Connected" : "Disconnected"}
+                  </span>
+                </span>
+              )}
+              {!useProstatIntegration && !useEcobeeIntegration && (
+                <span className="text-muted">Mode: <span className="text-high-contrast">Manual</span></span>
+              )}
+            </div>
+            <div className="text-muted text-xs">
+              CPU Temp: <span className="text-red-500">Offline</span>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Schedule Modal - Outside main container */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowScheduleModal(false)}>
+          <div className="glass-card shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 glass-card border-b p-glass flex items-center justify-between z-10">
+              <h2 className="heading-secondary">Thermostat Schedule</h2>
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="p-2 hover:opacity-80 rounded-lg transition-all"
+              >
+                <svg className="w-6 h-6 text-high-contrast" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-glass">
+              <ThermostatScheduleCard
+                indoorTemp={userSettings.winterThermostat || 70}
+                daytimeTime={daytimeTime}
+                nighttimeTime={nighttimeTime}
+                nighttimeTemp={nighttimeTemp}
+                onDaytimeTimeChange={setDaytimeTime}
+                onNighttimeTimeChange={setNighttimeTime}
+                onNighttimeTempChange={setNighttimeTemp}
+                onIndoorTempChange={setTargetTemp}
+                setUserSetting={setUserSetting}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default SmartThermostatDemo;
-

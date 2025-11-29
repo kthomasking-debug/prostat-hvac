@@ -3,15 +3,18 @@
 ## ✅ Bug 1: Speech Synthesis Toggle Not Working
 
 ### **Issue**
+
 **File:** `src/hooks/useSpeechSynthesis.js` lines 212-267
 
 **Problem:**
+
 - The `speak` function only checked `enabledRef.current` (parent's `enabled` prop)
 - It ignored the internal `isEnabled` state that's toggled by `toggleEnabled`
 - When users clicked the toggle button, `isEnabled` changed but `speak` didn't respect it
 - The dependency array was missing `isEnabled`, so the function didn't update when toggled
 
 **Original (Broken) Code:**
+
 ```javascript
 const speak = useCallback(
   (text, options = {}) => {
@@ -24,6 +27,7 @@ const speak = useCallback(
 ```
 
 **Fixed:**
+
 ```javascript
 const speak = useCallback(
   (text, options = {}) => {
@@ -36,6 +40,7 @@ const speak = useCallback(
 ```
 
 **Explanation:**
+
 - Now checks **both** `enabledRef.current` (parent control) **AND** `isEnabled` (internal toggle)
 - Both must be `true` for speech to work
 - Added `isEnabled` to dependency array so function updates when toggled
@@ -46,9 +51,11 @@ const speak = useCallback(
 ## ✅ Bug 2: Automatic Groq API Calls Without User Confirmation
 
 ### **Issue**
+
 **File:** `src/components/AskJoule.jsx` lines 1805-1810
 
 **Problem:**
+
 - When `aiMode` was enabled and a question was unparseable, the code automatically sent it to Groq
 - This happened **without user confirmation**
 - Users weren't aware API calls were being made
@@ -56,11 +63,12 @@ const speak = useCallback(
 - Created jarring UX where unexpected network requests occurred
 
 **Original (Problematic) Code:**
+
 ```javascript
 if (!hasAny) {
   // If AI Mode is enabled and Groq API key is present, automatically use Groq
   if (groqApiKey && aiMode) {
-    fetchGroqLLM(value);  // ❌ Auto-sends without confirmation
+    fetchGroqLLM(value); // ❌ Auto-sends without confirmation
     return;
   }
   // Otherwise, if Groq API key is present, prompt user for LLM fallback
@@ -73,12 +81,13 @@ if (!hasAny) {
 ```
 
 **Fixed:**
+
 ```javascript
 if (!hasAny) {
   // Always prompt user before sending to Groq (even if aiMode is enabled)
   // This prevents unexpected API calls and quota consumption
   if (groqApiKey) {
-    setShowGroqPrompt(true);  // ✅ Always prompt first
+    setShowGroqPrompt(true); // ✅ Always prompt first
     return;
   }
   // ...
@@ -86,6 +95,7 @@ if (!hasAny) {
 ```
 
 **Explanation:**
+
 - Removed the automatic `fetchGroqLLM(value)` call when `aiMode` is enabled
 - Now **always prompts the user** before sending to Groq
 - Users have control over when API calls are made
@@ -98,27 +108,28 @@ if (!hasAny) {
 
 ### **Bug 1 Verification**
 
-| Action | Before | After |
-|--------|--------|-------|
+| Action              | Before                      | After                            |
+| ------------------- | --------------------------- | -------------------------------- |
 | Click toggle button | ❌ No effect (still speaks) | ✅ Speech stops/starts correctly |
-| Toggle off | ❌ Still speaks | ✅ Speech blocked |
-| Toggle on | ❌ Already speaking | ✅ Speech enabled |
-| Parent disables | ✅ Speech blocked | ✅ Speech blocked (both checks) |
+| Toggle off          | ❌ Still speaks             | ✅ Speech blocked                |
+| Toggle on           | ❌ Already speaking         | ✅ Speech enabled                |
+| Parent disables     | ✅ Speech blocked           | ✅ Speech blocked (both checks)  |
 
 ### **Bug 2 Verification**
 
-| Scenario | Before | After |
-|----------|--------|-------|
-| `aiMode = true`, unparseable query | ❌ Auto-sends to Groq | ✅ Prompts user first |
-| `aiMode = false`, unparseable query | ✅ Prompts user | ✅ Prompts user |
-| User confirms prompt | ✅ Sends to Groq | ✅ Sends to Groq |
-| User cancels prompt | ✅ No API call | ✅ No API call |
+| Scenario                            | Before                | After                 |
+| ----------------------------------- | --------------------- | --------------------- |
+| `aiMode = true`, unparseable query  | ❌ Auto-sends to Groq | ✅ Prompts user first |
+| `aiMode = false`, unparseable query | ✅ Prompts user       | ✅ Prompts user       |
+| User confirms prompt                | ✅ Sends to Groq      | ✅ Sends to Groq      |
+| User cancels prompt                 | ✅ No API call        | ✅ No API call        |
 
 ---
 
 ## 📝 Files Modified
 
 1. **`src/hooks/useSpeechSynthesis.js`**
+
    - Line 215: Added `!isEnabled` check to `speak` function
    - Line 267: Added `isEnabled` to dependency array
    - Now respects both parent prop and internal toggle state
@@ -133,11 +144,13 @@ if (!hasAny) {
 ## ✅ Impact
 
 ### **Bug 1 Impact:**
+
 - **Before:** Toggle button didn't work - speech continued even when toggled off
 - **After:** Toggle button works correctly - respects both parent and internal state
 - **Result:** Users can now control speech synthesis properly
 
 ### **Bug 2 Impact:**
+
 - **Before:** Silent API calls when `aiMode` enabled, unexpected quota consumption
 - **After:** Always prompts user, no surprise API calls
 - **Result:** Better UX, users have control, no unexpected costs
@@ -152,4 +165,3 @@ Both bugs have been **verified and fixed**:
 ✅ **Groq auto-send** - Always prompts user before API calls
 
 The fixes are minimal, targeted, and maintain backward compatibility while correcting the logical errors.
-

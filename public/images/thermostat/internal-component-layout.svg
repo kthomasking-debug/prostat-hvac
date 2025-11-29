@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="150mm" viewBox="0 0 200 150">
+
+  <style>
+
+    .part { fill: none; stroke: red; stroke-width: 1; }
+
+    .box { fill: none; stroke: black; stroke-width: 0.5; stroke-dasharray: 2; }
+
+    .text { font-family: Arial; font-size: 4px; fill: red; }
+
+  </style>
+
+
+
+  <!-- Reference Box Outline -->
+
+  <rect x="30" y="30" width="140" height="90" class="box" />
+
+
+
+  <!-- Relay Module (Approx 70x50mm) - Left Side -->
+
+  <rect x="35" y="40" width="50" height="70" class="part" />
+
+  <text x="40" y="75" class="text">CH340 RELAY MODULE</text>
+
+  <circle cx="40" cy="45" r="1.5" class="part" /> <!-- Mounting Hole -->
+
+  <circle cx="80" cy="105" r="1.5" class="part" /> <!-- Mounting Hole -->
+
+
+
+  <!-- Converter 1 (24V -> 12V) - Top Right -->
+
+  <rect x="100" y="35" width="45" height="25" class="part" />
+
+  <text x="105" y="48" class="text">12V CONV</text>
+
+
+
+  <!-- Converter 2 (24V -> 5V) - Middle Right -->
+
+  <rect x="100" y="65" width="45" height="25" class="part" />
+
+  <text x="105" y="78" class="text">5V USB CONV</text>
+
+
+
+  <!-- USB Hub (Stripped/Small) - Bottom Right -->
+
+  <rect x="100" y="95" width="60" height="20" class="part" />
+
+  <text x="105" y="108" class="text">USB HUB</text>
+
+  
+
+  <!-- Title -->
+
+  <text x="30" y="20" font-size="8" fill="black">SHEET 2: INTERNAL COMPONENT LAYOUT</text>
+
+</svg>
+

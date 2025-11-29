@@ -2,7 +2,7 @@
 // This tests that the AI fallback can answer questions that aren't pre-programmed commands
 // Usage: node test-groq-new-questions.js YOUR_GROQ_API_KEY
 
-import { askJouleFallback } from './src/lib/groqIntegration.js';
+import { askJouleFallback } from './src/lib/groqAgent.js';
 
 const API_KEY = process.argv[2] || process.env.VITE_GROQ_API_KEY || '';
 

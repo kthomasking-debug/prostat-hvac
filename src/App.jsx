@@ -1,24 +1,44 @@
-import React, { useMemo, useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Crown, ChevronDown, ChevronUp, Volume2, VolumeX } from 'lucide-react';
-import { routes } from './navConfig';
-import './App.css'; // Retain any legacy specifics (can prune later)
-import { Moon, Sun } from 'lucide-react';
-import TermsAcceptanceModal from './components/TermsAcceptanceModal';
-import { useTermsAcceptance } from './hooks/useTermsAcceptance';
-import AnimatedSplash from './components/AnimatedSplash';
-import AskJoule from './components/AskJoule';
-import JouleFab from './components/JouleFab';
-import ModeSwitcher from './components/ModeSwitcher';
-import ModeToggle from './components/ModeToggle';
-import { ModeProvider, useMode } from './contexts/ModeContext';
-import { AIMode } from './components/AIMode';
-import { ConversationProvider } from './contexts/ConversationContext';
-
+import React, { useMemo, useEffect, useState } from "react";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Crown,
+  ChevronDown,
+  ChevronUp,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import { routes } from "./navConfig";
+import "./App.css"; // Retain any legacy specifics (can prune later)
+import { Moon, Sun } from "lucide-react";
+import TermsAcceptanceModal from "./components/TermsAcceptanceModal";
+import { useTermsAcceptance } from "./hooks/useTermsAcceptance";
+import AnimatedSplash from "./components/AnimatedSplash";
+import AskJoule from "./components/AskJoule";
+import JouleFab from "./components/JouleFab";
+import ModeSwitcher from "./components/ModeSwitcher";
+import ModeToggle from "./components/ModeToggle";
+import { ModeProvider, useMode } from "./contexts/ModeContext";
+import { AIMode } from "./components/AIMode";
+import { ConversationProvider } from "./contexts/ConversationContext";
+import { setSetting, getAllSettings, DEFAULT_SETTINGS } from "./lib/unifiedSettingsManager";
+import {
+  getAnnualHDD,
+  getAnnualCDD,
+  calculateAnnualHeatingCostFromHDD,
+  calculateAnnualCoolingCostFromCDD,
+} from "./lib/hddData";
 
 function AppInner() {
-  // Splash screen state
-  const [showSplash, setShowSplash] = React.useState(true);
+  // Splash screen state - skip in test mode
+  const [showSplash, setShowSplash] = React.useState(() => {
+    // Skip splash screen in test mode
+    if (typeof window !== 'undefined' && window.__SKIP_SPLASH__) {
+      return false;
+    }
+    return true;
+  });
   // State for the "More" menu
   const [showMoreMenu, setShowMoreMenu] = React.useState(false);
   // State for desktop tools dropdown
@@ -31,55 +51,52 @@ function AppInner() {
   const navigate = useNavigate();
   const { mode, setMode } = useMode();
 
-  // All user settings in one object, persisted with useLocalStorage
-  const defaultSettings = useMemo(() => ({
-    capacity: 24,
-    efficiency: 15,
-    winterThermostat: 70,
-    summerThermostat: 74,
-    useDetailedAnnualEstimate: false,
-    utilityCost: 0.10,
-    gasCost: 1.20,
-    primarySystem: 'heatPump',
-    afue: 0.95,
-    squareFeet: 800,
-    insulationLevel: 0.65,
-    homeShape: 0.9,
-    ceilingHeight: 8,
-    homeElevation: 0,
-    energyMode: 'heating',
-    solarExposure: 1.0,
-    coolingSystem: 'heatPump',
-    coolingCapacity: 36,
-    hspf2: 9.0,
-    useElectricAuxHeat: true
-  }), []);
+  // Use unified settings manager defaults
+  const defaultSettings = useMemo(() => DEFAULT_SETTINGS, []);
+  
   // Replace useLocalStorage with explicit state management for userSettings
+  // Initialize from unified settings manager
   const [userSettings, setUserSettings] = React.useState(() => {
     try {
-      const stored = localStorage.getItem('userSettings');
-      return stored ? JSON.parse(stored) : defaultSettings;
+      return getAllSettings();
     } catch (_e) {
-      console.warn('Failed to parse userSettings from localStorage', _e);
+      console.warn("Failed to get settings from unified manager", _e);
       return defaultSettings;
     }
   });
-
+  
+  // Listen to unified settings manager events to sync React state
   React.useEffect(() => {
-    try {
-      localStorage.setItem('userSettings', JSON.stringify(userSettings));
-        } catch (_e) {
-      console.warn('Failed to persist userSettings', _e);
-    }
-  }, [userSettings]);
+    const handleSettingsUpdate = (event) => {
+      const { key, value, updates } = event.detail;
+      if (updates) {
+        // Batch update
+        setUserSettings((prev) => ({ ...prev, ...updates }));
+      } else if (key) {
+        // Single update
+        setUserSettings((prev) => ({ ...prev, [key]: value }));
+      } else {
+        // Full refresh (e.g., reset)
+        setUserSettings(getAllSettings());
+      }
+    };
+    
+    window.addEventListener("userSettingsUpdated", handleSettingsUpdate);
+    return () => window.removeEventListener("userSettingsUpdated", handleSettingsUpdate);
+  }, []);
+
+  // Note: userSettings persistence is now handled by unifiedSettingsManager
+  // The unified manager dispatches 'userSettingsUpdated' events which sync React state
 
   // Ensure we always pass a merged object with defaults to child routes to avoid missing keys
-  const mergedUserSettings = useMemo(() => ({ ...defaultSettings, ...(userSettings || {}) }), [userSettings, defaultSettings]);
-
+  const mergedUserSettings = useMemo(
+    () => ({ ...defaultSettings, ...(userSettings || {}) }),
+    [userSettings, defaultSettings]
+  );
 
   const [userLocation, setUserLocation] = useState(() => {
     try {
-      const raw = localStorage.getItem('userLocation');
+      const raw = localStorage.getItem("userLocation");
       return raw ? JSON.parse(raw) : null;
     } catch (_e) {
       return null;
@@ -89,13 +106,231 @@ function AppInner() {
   // Update userLocation state when userSettings changes (e.g., when location is set via UI)
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('userLocation');
+      const raw = localStorage.getItem("userLocation");
       const parsed = raw ? JSON.parse(raw) : null;
       setUserLocation(parsed);
     } catch (_e) {
       // ignore
     }
   }, [userSettings]);
+
+  // Listen for location updates from onboarding
+  useEffect(() => {
+    const handleLocationUpdate = () => {
+      try {
+        const raw = localStorage.getItem("userLocation");
+        const parsed = raw ? JSON.parse(raw) : null;
+        setUserLocation(parsed);
+        // Also trigger settings refresh to pick up elevation changes
+        setUserSettings(getAllSettings());
+      } catch (_e) {
+        // ignore
+      }
+    };
+    
+    window.addEventListener("userLocationUpdated", handleLocationUpdate);
+    return () => window.removeEventListener("userLocationUpdated", handleLocationUpdate);
+  }, []);
+
+  // Load analyzer data from localStorage (persisted from previous analyses)
+  const [latestAnalysis, setLatestAnalysis] = useState(() => {
+    try {
+      const resultsHistory = JSON.parse(localStorage.getItem("spa_resultsHistory") || "[]");
+      return resultsHistory && resultsHistory.length > 0 
+        ? resultsHistory[resultsHistory.length - 1] 
+        : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Listen for analyzer data updates (when new analysis is run)
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "spa_resultsHistory") {
+        try {
+          const resultsHistory = JSON.parse(e.newValue || "[]");
+          setLatestAnalysis(
+            resultsHistory && resultsHistory.length > 0 
+              ? resultsHistory[resultsHistory.length - 1] 
+              : null
+          );
+        } catch {
+          setLatestAnalysis(null);
+        }
+      }
+    };
+    
+    window.addEventListener("storage", handleStorageChange);
+    // Also listen for same-tab updates via custom event
+    const handleCustomStorageChange = () => {
+      try {
+        const resultsHistory = JSON.parse(localStorage.getItem("spa_resultsHistory") || "[]");
+        setLatestAnalysis(
+          resultsHistory && resultsHistory.length > 0 
+            ? resultsHistory[resultsHistory.length - 1] 
+            : null
+        );
+      } catch {
+        setLatestAnalysis(null);
+      }
+    };
+    
+    window.addEventListener("analyzerDataUpdated", handleCustomStorageChange);
+    
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("analyzerDataUpdated", handleCustomStorageChange);
+    };
+  }, []);
+
+  // Auto-enable analyzer heat loss usage when analyzer data exists
+  useEffect(() => {
+    if (latestAnalysis?.heatLossFactor && !mergedUserSettings.useAnalyzerHeatLoss) {
+      setSetting("useAnalyzerHeatLoss", true);
+    }
+  }, [latestAnalysis, mergedUserSettings.useAnalyzerHeatLoss]);
+
+  // Calculate annualEstimate - automatically uses analyzer data when available
+  const annualEstimate = useMemo(() => {
+    if (!userLocation) return null;
+
+    const settings = mergedUserSettings;
+    const useManualHeatLoss = Boolean(settings?.useManualHeatLoss);
+    const useCalculatedHeatLoss = settings?.useCalculatedHeatLoss !== false; // Default to true
+    const useAnalyzerHeatLoss = Boolean(settings?.useAnalyzerHeatLoss);
+    let heatLossFactor;
+
+    // Priority 1: Manual Entry (if enabled)
+    if (useManualHeatLoss) {
+      const manualHeatLossFactor = Number(settings?.manualHeatLoss);
+      if (Number.isFinite(manualHeatLossFactor) && manualHeatLossFactor > 0) {
+        heatLossFactor = manualHeatLossFactor;
+      }
+    }
+
+    // Priority 2: Analyzer Data from CSV (if enabled and available)
+    if (!heatLossFactor && useAnalyzerHeatLoss && latestAnalysis?.heatLossFactor) {
+      heatLossFactor = latestAnalysis.heatLossFactor;
+    }
+
+    // Priority 3: Calculated from Building Characteristics (DoE data)
+    if (!heatLossFactor && useCalculatedHeatLoss) {
+      const BASE_BTU_PER_SQFT_HEATING = 22.67;
+      const ceilingMultiplier = 1 + ((settings.ceilingHeight || 8) - 8) * 0.1;
+      const designHeatLoss =
+        (settings.squareFeet || 1500) *
+        BASE_BTU_PER_SQFT_HEATING *
+        (settings.insulationLevel || 1.0) *
+        (settings.homeShape || 1.0) *
+        ceilingMultiplier;
+      heatLossFactor = designHeatLoss / 70;
+    }
+
+    // Fallback: Use analyzer data if available (automatically use it even if not explicitly enabled)
+    if (!heatLossFactor && latestAnalysis?.heatLossFactor) {
+      heatLossFactor = latestAnalysis.heatLossFactor;
+    }
+
+    if (!heatLossFactor) {
+      return null;
+    }
+
+    const homeElevation = settings.homeElevation ?? 0;
+    const elevationMultiplierRaw = 1 + ((homeElevation || 0) / 1000) * 0.005;
+    const elevationMultiplier = Math.max(
+      0.8,
+      Math.min(1.3, elevationMultiplierRaw)
+    );
+
+    const winterThermostat = settings.winterThermostat;
+    const summerThermostat = settings.summerThermostat;
+
+    const annualHDD = getAnnualHDD(
+      `${userLocation.city}, ${userLocation.state}`,
+      userLocation.state
+    );
+    const heatingThermostatMultiplier = (winterThermostat || 70) / 70;
+
+    const useElectricAuxHeat = settings.useElectricAuxHeat;
+    const annualHeatingCost = calculateAnnualHeatingCostFromHDD(
+      annualHDD,
+      heatLossFactor,
+      settings.hspf2 || 9.0,
+      settings.utilityCost || 0.15,
+      useElectricAuxHeat
+    );
+    annualHeatingCost.energy *= heatingThermostatMultiplier;
+    annualHeatingCost.cost *= heatingThermostatMultiplier;
+    annualHeatingCost.energy *= elevationMultiplier;
+    annualHeatingCost.cost *= elevationMultiplier;
+
+    const annualCDD = getAnnualCDD(
+      `${userLocation.city}, ${userLocation.state}`,
+      userLocation.state
+    );
+    const BASE_BTU_PER_SQFT_COOLING = 28.0;
+    const ceilingMultiplier = 1 + ((settings.ceilingHeight || 8) - 8) * 0.1;
+    const designHeatGain =
+      (settings.squareFeet || 1500) *
+      BASE_BTU_PER_SQFT_COOLING *
+      (settings.insulationLevel || 1.0) *
+      (settings.homeShape || 1.0) *
+      ceilingMultiplier *
+      (settings.solarExposure || 1.0);
+    const heatGainFactor = designHeatGain / 20;
+
+    const coolingThermostatMultiplier = 74 / (summerThermostat || 74);
+
+    const annualCoolingCost = calculateAnnualCoolingCostFromCDD(
+      annualCDD,
+      heatGainFactor,
+      settings.efficiency || 15.0,
+      settings.utilityCost || 0.15
+    );
+    annualCoolingCost.energy *= coolingThermostatMultiplier;
+    annualCoolingCost.cost *= coolingThermostatMultiplier;
+    annualCoolingCost.energy *= elevationMultiplier;
+    annualCoolingCost.cost *= elevationMultiplier;
+
+    const totalAnnualCost = annualHeatingCost.cost + annualCoolingCost.cost;
+
+    return {
+      totalCost: totalAnnualCost,
+      elevationDelta: elevationMultiplier,
+      homeElevation: homeElevation,
+      heatingCost: annualHeatingCost.cost,
+      coolingCost: annualCoolingCost.cost,
+      auxKwhIncluded: annualHeatingCost.auxKwhIncluded || 0,
+      auxKwhExcluded: annualHeatingCost.auxKwhExcluded || 0,
+      hdd: annualHDD,
+      cdd: annualCDD,
+      isEstimated: !latestAnalysis?.heatLossFactor,
+      method: "quick",
+      winterThermostat: winterThermostat,
+      summerThermostat: summerThermostat,
+      heatLossFactor: heatLossFactor, // Include for AskJoule queries
+    };
+  }, [
+    latestAnalysis,
+    userLocation,
+    mergedUserSettings.squareFeet,
+    mergedUserSettings.insulationLevel,
+    mergedUserSettings.homeShape,
+    mergedUserSettings.ceilingHeight,
+    mergedUserSettings.homeElevation,
+    mergedUserSettings.winterThermostat,
+    mergedUserSettings.summerThermostat,
+    mergedUserSettings.hspf2,
+    mergedUserSettings.efficiency,
+    mergedUserSettings.utilityCost,
+    mergedUserSettings.useElectricAuxHeat,
+    mergedUserSettings.solarExposure,
+    mergedUserSettings.useManualHeatLoss,
+    mergedUserSettings.useCalculatedHeatLoss,
+    mergedUserSettings.useAnalyzerHeatLoss,
+    mergedUserSettings.manualHeatLoss,
+  ]);
 
   // On mount, if persisted userSettings are missing keys, merge default keys and persist them back.
   React.useEffect(() => {
@@ -105,7 +340,7 @@ function AppInner() {
         setUserSettings(merged);
       }
     } catch (_e) {
-      console.warn('Failed to merge default user settings', _e);
+      console.warn("Failed to merge default user settings", _e);
     }
     // Only run once on mount for safety
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -117,21 +352,21 @@ function AppInner() {
   // Dark mode persisted
   const [darkMode, setDarkMode] = React.useState(() => {
     try {
-      const stored = localStorage.getItem('darkMode');
+      const stored = localStorage.getItem("darkMode");
       return stored ? JSON.parse(stored) : true;
     } catch (error) {
-      console.warn('Failed to read darkMode setting from localStorage', error);
+      console.warn("Failed to read darkMode setting from localStorage", error);
       return true;
     }
   });
 
   const toggleDarkMode = () => {
-    setDarkMode(prevMode => {
+    setDarkMode((prevMode) => {
       const newMode = !prevMode;
       try {
-        localStorage.setItem('darkMode', JSON.stringify(newMode));
+        localStorage.setItem("darkMode", JSON.stringify(newMode));
       } catch (error) {
-        console.warn('Failed to persist darkMode setting', error);
+        console.warn("Failed to persist darkMode setting", error);
       }
       return newMode;
     });
@@ -140,29 +375,29 @@ function AppInner() {
   // Also persist darkMode changes via useEffect
   React.useEffect(() => {
     try {
-      localStorage.setItem('darkMode', JSON.stringify(darkMode));
+      localStorage.setItem("darkMode", JSON.stringify(darkMode));
     } catch (error) {
-      console.warn('Failed to persist dark mode setting', error);
+      console.warn("Failed to persist dark mode setting", error);
     }
   }, [darkMode]);
 
   // Global mute state for all speech/audio
   const [isMuted, setIsMuted] = useState(() => {
     try {
-      const saved = localStorage.getItem('globalMuted');
-      return saved === 'true';
+      const saved = localStorage.getItem("globalMuted");
+      return saved === "true";
     } catch {
       return false;
     }
   });
 
   const toggleMute = () => {
-    setIsMuted(prev => {
+    setIsMuted((prev) => {
       const newMuted = !prev;
       try {
-        localStorage.setItem('globalMuted', String(newMuted));
+        localStorage.setItem("globalMuted", String(newMuted));
         // Also sync with askJouleMuted for compatibility
-        localStorage.setItem('askJouleMuted', String(newMuted));
+        localStorage.setItem("askJouleMuted", String(newMuted));
       } catch {
         // Ignore storage errors
       }
@@ -173,8 +408,8 @@ function AppInner() {
   // Persist mute state
   React.useEffect(() => {
     try {
-      localStorage.setItem('globalMuted', String(isMuted));
-      localStorage.setItem('askJouleMuted', String(isMuted));
+      localStorage.setItem("globalMuted", String(isMuted));
+      localStorage.setItem("askJouleMuted", String(isMuted));
     } catch {
       // Ignore storage errors
     }
@@ -184,29 +419,57 @@ function AppInner() {
   const heatLoss = useMemo(() => {
     const baseBtuPerSqFt = 22.67;
     const ceilingMultiplier = 1 + (userSettings.ceilingHeight - 8) * 0.1;
-    return Math.round((userSettings.squareFeet * baseBtuPerSqFt * userSettings.insulationLevel * userSettings.homeShape * ceilingMultiplier) / 1000) * 1000;
-  }, [userSettings.squareFeet, userSettings.insulationLevel, userSettings.homeShape, userSettings.ceilingHeight]);
+    return (
+      Math.round(
+        (userSettings.squareFeet *
+          baseBtuPerSqFt *
+          userSettings.insulationLevel *
+          userSettings.homeShape *
+          ceilingMultiplier) /
+          1000
+      ) * 1000
+    );
+  }, [
+    userSettings.squareFeet,
+    userSettings.insulationLevel,
+    userSettings.homeShape,
+    userSettings.ceilingHeight,
+  ]);
 
-  const capacities = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+  const capacities = {
+    18: 1.5,
+    24: 2.0,
+    30: 2.5,
+    36: 3.0,
+    42: 3.5,
+    48: 4.0,
+    60: 5.0,
+  };
   // Backwards compatibility: prefer explicit userSettings.capacity, otherwise fall back to coolingCapacity
-  const tons = capacities[userSettings.capacity ?? userSettings.coolingCapacity];
-  const compressorPower = useMemo(() => tons * 1.0 * (15 / userSettings.efficiency), [tons, userSettings.efficiency]);
+  const tons =
+    capacities[userSettings.capacity ?? userSettings.coolingCapacity];
+  const compressorPower = useMemo(
+    () => tons * 1.0 * (15 / userSettings.efficiency),
+    [tons, userSettings.efficiency]
+  );
 
   // Audit log persisted to localStorage (Ask Joule commands and edits)
   const [auditLog, setAuditLog] = React.useState(() => {
     try {
-      const raw = localStorage.getItem('askJouleAuditLog');
+      const raw = localStorage.getItem("askJouleAuditLog");
       return raw ? JSON.parse(raw) : [];
     } catch (_e) {
-      console.warn('Failed to parse askJouleAuditLog', _e);
+      console.warn("Failed to parse askJouleAuditLog", _e);
       return [];
     }
   });
 
   React.useEffect(() => {
     try {
-      localStorage.setItem('askJouleAuditLog', JSON.stringify(auditLog));
-    } catch (_e) { /* ignore write errors */ }
+      localStorage.setItem("askJouleAuditLog", JSON.stringify(auditLog));
+    } catch (_e) {
+      /* ignore write errors */
+    }
   }, [auditLog]);
 
   // Helper to push an audit entry. Includes a small unique id.
@@ -214,25 +477,36 @@ function AppInner() {
     const now = Date.now();
     const id = `${now}-${Math.floor(Math.random() * 99999)}`;
     const item = { id, timestamp: now, ...entry };
-    setAuditLog(prev => [item, ...prev].slice(0, 250)); // Keep last 250 entries
+    setAuditLog((prev) => [item, ...prev].slice(0, 250)); // Keep last 250 entries
     return item;
   };
 
   // Undo a change (reverts to oldValue). The caller must pass the audit entry id.
   const undoChange = (idOrWhen) => {
-    const id = idOrWhen === 'last' ? (auditLog && auditLog.length > 0 ? auditLog[0].id : null) : idOrWhen;
-    const entry = id ? auditLog.find(e => e.id === id) : null;
+    const id =
+      idOrWhen === "last"
+        ? auditLog && auditLog.length > 0
+          ? auditLog[0].id
+          : null
+        : idOrWhen;
+    const entry = id ? auditLog.find((e) => e.id === id) : null;
     if (!entry) return false;
     // Only undo entries that are settings updates (have key and oldValue)
-    if (typeof entry.key !== 'undefined') {
+    if (typeof entry.key !== "undefined") {
       // Revert by writing the old value back into userSettings if the key maps to userSettings
-      setUserSettings(prev => {
+      setUserSettings((prev) => {
         const merged = { ...prev };
         merged[entry.key] = entry.oldValue;
         return merged;
       });
       // Push an 'undo' record for traceability
-      pushAuditLog({ key: entry.key, oldValue: entry.newValue, newValue: entry.oldValue, source: 'undo', comment: `Undo ${entry.id}` });
+      pushAuditLog({
+        key: entry.key,
+        oldValue: entry.newValue,
+        newValue: entry.oldValue,
+        source: "undo",
+        comment: `Undo ${entry.id}`,
+      });
       return true;
     }
     // For other types of audit entries, we don't support undo yet
@@ -244,56 +518,72 @@ function AppInner() {
 
   // Helper to update a single user setting
   // Accepts optional meta param: { source: 'AskJoule' | 'ui' | 'script', comment }
+  // Now uses unified settings manager with validation
   const setUserSetting = (key, value, meta = {}) => {
-    setUserSettings(prev => {
-      const prevValue = prev ? prev[key] : undefined;
-      const next = { ...prev, [key]: value };
+    // Use unified settings manager with validation
+    const result = setSetting(key, value, meta);
+    
+    if (result.success) {
+      // Get previous value for audit log
+      const prevValue = userSettings[key];
+      
       // Only push if value changes
       if (JSON.stringify(prevValue) !== JSON.stringify(value)) {
-        pushAuditLog({ key, oldValue: prevValue, newValue: value, source: meta.source || 'ui', comment: meta.comment || '' });
+        pushAuditLog({
+          key,
+          oldValue: prevValue,
+          newValue: value,
+          source: meta.source || "ui",
+          comment: meta.comment || "",
+        });
       }
+      
       // Special handling for 'location' to keep localStorage userLocation in sync
       try {
-        if (key === 'location' && typeof value === 'string') {
-          const raw = localStorage.getItem('userLocation');
+        if (key === "location" && typeof value === "string") {
+          const raw = localStorage.getItem("userLocation");
           const parsed = raw ? JSON.parse(raw) : {};
           parsed.city = value;
-          localStorage.setItem('userLocation', JSON.stringify(parsed));
+          localStorage.setItem("userLocation", JSON.stringify(parsed));
         }
-      } catch (err) { /* ignore */ }
-      return next;
-    });
+      } catch (err) {
+        /* ignore */
+      }
+      
+      // State will be updated via the event listener from unified manager
+      return true;
+    } else {
+      // Validation failed - log error
+      console.warn(`Failed to set ${key}:`, result.error);
+      return false;
+    }
   };
 
   useEffect(() => {
     if (darkMode) {
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
     }
   }, [darkMode]);
 
-
-  // Onboarding check
-  useEffect(() => {
-    const onboarded = localStorage.getItem('onboarded');
-    if (!onboarded && isLoaded && termsAccepted) {
-      navigate('/onboarding');
-    }
-  }, [isLoaded, termsAccepted, navigate]);
+  // Onboarding is now handled via route guards - no automatic redirect here
+  // Landing page shows first, then users go to /onboarding when clicking "Launch App"
 
   // Sync userLocation elevation with userSettings.homeElevation
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('userLocation');
+      const raw = localStorage.getItem("userLocation");
       if (!raw) return;
       const loc = JSON.parse(raw);
-      if (!loc || typeof loc !== 'object') return;
+      if (!loc || typeof loc !== "object") return;
       if (loc.elevation !== userSettings.homeElevation) {
         loc.elevation = userSettings.homeElevation;
-        localStorage.setItem('userLocation', JSON.stringify(loc));
+        localStorage.setItem("userLocation", JSON.stringify(loc));
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [userSettings.homeElevation]);
 
   // Keep capacity and coolingCapacity keys synchronized to avoid mismatch between onboarding and settings
@@ -302,10 +592,10 @@ function AppInner() {
       const cap = userSettings.capacity;
       const coolCap = userSettings.coolingCapacity;
       // If they differ (or one is missing), prefer the explicitly set key and mirror it
-      if (typeof cap === 'number' && cap !== coolCap) {
-        setUserSettings(prev => ({ ...prev, coolingCapacity: cap }));
-      } else if (typeof coolCap === 'number' && coolCap !== cap) {
-        setUserSettings(prev => ({ ...prev, capacity: coolCap }));
+      if (typeof cap === "number" && cap !== coolCap) {
+        setUserSettings((prev) => ({ ...prev, coolingCapacity: cap }));
+      } else if (typeof coolCap === "number" && coolCap !== cap) {
+        setUserSettings((prev) => ({ ...prev, capacity: coolCap }));
       }
     } catch {
       // ignore
@@ -315,7 +605,7 @@ function AppInner() {
   // Subscription / Pro flag (used to gate commercial features)
   const isPro = useMemo(() => {
     try {
-      const stored = localStorage.getItem('userSubscription');
+      const stored = localStorage.getItem("userSubscription");
       if (stored) {
         const obj = JSON.parse(stored);
         if (obj && obj.isPro) return true;
@@ -323,37 +613,23 @@ function AppInner() {
     } catch {
       // ignore
     }
-    return localStorage.getItem('isPro') === 'true';
+    return localStorage.getItem("isPro") === "true";
   }, []);
 
   const location = useLocation();
-  const isHome = location.pathname === '/' || location.pathname === '';
+  const isHome = location.pathname === "/" || location.pathname === "";
   // Hide the persistent/global AskJoule instance on pages that provide their own AskJoule component
-  const ASK_JOULE_DISABLED_PATHS = ['/', '/cost-forecaster'];
-  const shouldShowGlobalAskJoule = !ASK_JOULE_DISABLED_PATHS.includes(location.pathname);
+  const ASK_JOULE_DISABLED_PATHS = ["/", "/cost-forecaster", "/app"];
+  const shouldShowGlobalAskJoule = !ASK_JOULE_DISABLED_PATHS.includes(
+    location.pathname
+  );
   const [showAskModal, setShowAskModal] = React.useState(false);
 
   // Centralized onboarding redirect: When the terms are accepted and the app has loaded,
   // redirect first-time users (those who haven't completed onboarding) to /cost-forecaster.
-  // This ensures consistent behavior across different entry points and avoids race conditions
-  // where child components may not yet run redirect logic.
-  useEffect(() => {
-    if (!isLoaded || !termsAccepted) return;
-    try {
-      const hasCompleted = localStorage.getItem('hasCompletedOnboarding');
-      const pathIsRoot = window.location.pathname === '/' || window.location.pathname === '';
-      if (!hasCompleted && pathIsRoot) {
-        // Hide splash if present and navigate
-        setShowSplash(false);
-        // Use react-router's navigate via useNavigate
-        navigate('/cost-forecaster');
-      }
-    } catch {
-      // If anything fails silently, do not block the app
-      // console.warn('Onboarding redirect failed', e);
-    }
-  }, [isLoaded, termsAccepted, navigate]);
-
+  // Onboarding is now handled by the landing page - users see landing page first,
+  // then go to /onboarding when they click "Launch App" if not completed
+  // No automatic redirect from landing page - let users explore first
 
   // Splash screen logic
   useEffect(() => {
@@ -373,19 +649,19 @@ function AppInner() {
     return <TermsAcceptanceModal onAccept={markTermsAccepted} />;
   }
 
-  const navLinks = routes.filter(route => route.showInNav);
-  const moreLinks = routes.filter(route => route.showInMoreMenu);
+  const navLinks = routes.filter((route) => route.showInNav);
+  const moreLinks = routes.filter((route) => route.showInMoreMenu);
 
-  const handleTempChange = e => {
+  const handleTempChange = (e) => {
     setManualTemp(parseInt(e.target.value, 10));
   };
 
-  const handleHumidityChange = e => {
+  const handleHumidityChange = (e) => {
     setManualHumidity(parseInt(e.target.value, 10));
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
+    <div className="app-scale-wrapper flex flex-col h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
       {/* Header */}
       <header className="flex items-center justify-between p-2 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center">
@@ -397,21 +673,21 @@ function AppInner() {
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center space-x-1">
-          {navLinks.map(route => (
+          {navLinks.map((route) => (
             <NavLink
               key={route.path}
               to={route.path}
               onClick={() => {
                 // Switch to traditional mode when navigating from AI mode
-                if (mode === 'ai') {
-                  setMode('traditional');
+                if (mode === "ai") {
+                  setMode("traditional");
                 }
               }}
               className={({ isActive }) =>
                 `px-3 py-2 rounded-md text-sm font-medium ${
                   isActive
-                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`
               }
             >
@@ -429,16 +705,16 @@ function AppInner() {
             {showToolsDropdown && (
               <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg z-20">
                 {routes
-                  .filter(r => r.isTool)
-                  .map(route => (
+                  .filter((r) => r.isTool)
+                  .map((route) => (
                     <NavLink
                       key={route.path}
                       to={route.path}
                       onClick={() => {
                         setShowToolsDropdown(false);
                         // Switch to traditional mode when navigating from AI mode
-                        if (mode === 'ai') {
-                          setMode('traditional');
+                        if (mode === "ai") {
+                          setMode("traditional");
                         }
                       }}
                       className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -457,11 +733,15 @@ function AppInner() {
             onClick={toggleMute}
             className={`px-3 sm:px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
               isMuted
-                ? 'bg-red-500 hover:bg-red-600 text-white border-2 border-red-600'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                ? "bg-red-500 hover:bg-red-600 text-white border-2 border-red-600"
+                : "bg-blue-600 hover:bg-blue-700 text-white"
             }`}
-            aria-label={isMuted ? 'Unmute voice' : 'Mute voice'}
-            title={isMuted ? 'Voice MUTED - Click to unmute' : 'Voice ON - Click to mute'}
+            aria-label={isMuted ? "Unmute voice" : "Mute voice"}
+            title={
+              isMuted
+                ? "Voice MUTED - Click to unmute"
+                : "Voice ON - Click to mute"
+            }
           >
             {isMuted ? (
               <>
@@ -488,7 +768,7 @@ function AppInner() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-4">
-        {mode === 'ai' ? (
+        {mode === "ai" ? (
           <AIMode />
         ) : (
           <Outlet
@@ -507,8 +787,10 @@ function AppInner() {
         )}
       </main>
 
-      {/* Floating Action Button for Ask Joule */}
-      <JouleFab onClick={() => setIsJouleModalOpen(true)} />
+      {/* Floating Action Button for Ask Joule - hidden when global button is shown */}
+      {!shouldShowGlobalAskJoule && (
+        <JouleFab onClick={() => setIsJouleModalOpen(true)} />
+      )}
 
       {/* Ask Joule Modal */}
       {isJouleModalOpen && (
@@ -517,11 +799,14 @@ function AppInner() {
           onClick={() => setIsJouleModalOpen(false)}
         >
           <div
-            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg mx-4"
-            onClick={e => e.stopPropagation()}
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-4xl mx-4"
+            onClick={(e) => e.stopPropagation()}
           >
             <AskJoule
               userSettings={mergedUserSettings}
+              userLocation={userLocation}
+              annualEstimate={annualEstimate}
+              recommendations={[]}
               isModal={true}
               onClose={() => setIsJouleModalOpen(false)}
             />
@@ -531,25 +816,30 @@ function AppInner() {
 
       {/* Bottom Navigation for Mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around">
-        {navLinks.slice(0, 4).map(route => (
+        {navLinks.slice(0, 4).map((route) => (
           <NavLink
             key={route.path}
             to={route.path}
             onClick={() => {
               // Switch to traditional mode when navigating from AI mode
-              if (mode === 'ai') {
-                setMode('traditional');
+              if (mode === "ai") {
+                setMode("traditional");
               }
             }}
             className={({ isActive }) =>
               `flex flex-col items-center justify-center text-center p-2 ${
                 isActive
-                  ? 'text-blue-600 dark:text-blue-400'
-                  : 'text-gray-600 dark:text-gray-400'
+                  ? "text-blue-600 dark:text-blue-400"
+                  : "text-gray-600 dark:text-gray-400"
               }`
             }
           >
-            {route.icon ? React.createElement(route.icon, { className: 'h-5 w-5', 'aria-hidden': true }) : null}
+            {route.icon
+              ? React.createElement(route.icon, {
+                  className: "h-5 w-5",
+                  "aria-hidden": true,
+                })
+              : null}
             <span className="text-xs mt-1">{route.name}</span>
           </NavLink>
         ))}
@@ -566,20 +856,25 @@ function AppInner() {
       {showMoreMenu && (
         <div className="md:hidden fixed bottom-16 left-0 right-0 bg-white dark:bg-gray-800 p-4 z-20 shadow-lg rounded-t-lg">
           <div className="grid grid-cols-4 gap-4">
-            {moreLinks.map(route => (
+            {moreLinks.map((route) => (
               <NavLink
                 key={route.path}
                 to={route.path}
                 onClick={() => {
                   setShowMoreMenu(false);
                   // Switch to traditional mode when navigating from AI mode
-                  if (mode === 'ai') {
-                    setMode('traditional');
+                  if (mode === "ai") {
+                    setMode("traditional");
                   }
                 }}
                 className="flex flex-col items-center text-gray-700 dark:text-gray-300"
               >
-                {route.icon ? React.createElement(route.icon, { className: 'h-5 w-5 mb-1', 'aria-hidden': true }) : null}
+                {route.icon
+                  ? React.createElement(route.icon, {
+                      className: "h-5 w-5 mb-1",
+                      "aria-hidden": true,
+                    })
+                  : null}
                 <span className="text-xs mt-1 text-center">{route.name}</span>
               </NavLink>
             ))}
@@ -588,39 +883,71 @@ function AppInner() {
       )}
 
       {/* Animated Splash Screen */}
-      {showSplash && (
-        <AnimatedSplash onComplete={() => setShowSplash(false)} />
-      )}
+      {showSplash && <AnimatedSplash onComplete={() => setShowSplash(false)} />}
 
       {/* Floating Ask Joule Launcher - only in Traditional Mode */}
-      {shouldShowGlobalAskJoule && mode === 'traditional' && (
+      {shouldShowGlobalAskJoule && mode === "traditional" && (
         <>
           <button
             data-testid="ask-joule-fab"
             aria-label="Open Ask Joule"
             title="Ask Joule"
-            className="fixed bottom-6 right-6 z-50 inline-flex items-center justify-center w-12 h-12 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className={`fixed bottom-6 right-6 z-50 inline-flex items-center justify-center rounded-full shadow-2xl bg-blue-600 hover:bg-blue-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all ${
+              location.pathname === "/upgrades"
+                ? "px-6 py-4 w-20 h-20 text-base font-bold"
+                : "w-12 h-12"
+            }`}
             onClick={() => setShowAskModal(true)}
           >
-            {/* Icon - use lightning or chat */}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-              <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor" />
-            </svg>
+            {location.pathname === "/upgrades" ? (
+              <span className="text-base font-bold">chat</span>
+            ) : (
+              /* Icon - use lightning or chat */
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden
+              >
+                <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor" />
+              </svg>
+            )}
           </button>
           {showAskModal && (
-            <div aria-modal="true" role="dialog" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-              <div className="fixed inset-0 bg-black/50" onClick={() => setShowAskModal(false)} />
-              <div className="relative z-10 w-full max-w-2xl bg-white dark:bg-gray-900 rounded-xl shadow-xl p-4 sm:p-6">
+            <div
+              aria-modal="true"
+              role="dialog"
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+            >
+              <div
+                className="fixed inset-0 bg-black/50"
+                onClick={() => setShowAskModal(false)}
+              />
+              <div className="relative z-10 w-full max-w-4xl bg-white dark:bg-gray-900 rounded-xl shadow-xl p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Ask Joule</h2>
-                  <button aria-label="Close" className="text-gray-600 dark:text-gray-300 hover:text-gray-900" onClick={() => setShowAskModal(false)}>✕</button>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    Ask Joule
+                  </h2>
+                  <button
+                    aria-label="Close"
+                    className="text-gray-600 dark:text-gray-300 hover:text-gray-900"
+                    onClick={() => setShowAskModal(false)}
+                  >
+                    ✕
+                  </button>
                 </div>
                 <AskJoule
                   hasLocation={!!userLocation}
                   userLocation={userLocation}
                   userSettings={mergedUserSettings}
+                  annualEstimate={annualEstimate}
+                  recommendations={[]}
                   onNavigate={(path) => navigate(path)}
-                  onSettingChange={(key, value, meta) => setUserSetting(key, value, meta)}
+                  onSettingChange={(key, value, meta) =>
+                    setUserSetting(key, value, meta)
+                  }
                   auditLog={auditLog}
                   onUndo={(id) => undoChange(id)}
                 />

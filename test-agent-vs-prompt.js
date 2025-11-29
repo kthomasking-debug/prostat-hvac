@@ -1,7 +1,7 @@
 // Comparison test: Agent Architecture vs Prompt Bloat
 // Shows token efficiency and response quality
 
-import { askJouleFallback } from './src/lib/groqIntegration.js';
+import { askJouleFallback } from './src/lib/groqAgent.js';
 import { answerWithRAG } from './src/lib/groqAgent.js';
 
 const API_KEY = process.argv[2] || process.env.GROQ_API_KEY || '';

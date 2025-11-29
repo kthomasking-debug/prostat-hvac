@@ -9,26 +9,26 @@ import {
   searchKnowledge,
   getCurrentState,
   getUserSettings,
-} from './agentTools.js';
+} from "./agentTools.js";
 
 /**
  * Tool Registry - Maps tool names to actual functions
  * This is what the agent framework uses to execute LLM's tool calls
  */
 const TOOL_REGISTRY = {
-  'read_file': readFile,
-  'query_database': queryDatabase,
-  'run_terminal': runTerminal,
-  'browse': browse,
-  'search_knowledge': searchKnowledge,
-  'get_current_state': getCurrentState,
-  'get_user_settings': getUserSettings,
-  
+  read_file: readFile,
+  query_database: queryDatabase,
+  run_terminal: runTerminal,
+  browse: browse,
+  search_knowledge: searchKnowledge,
+  get_current_state: getCurrentState,
+  get_user_settings: getUserSettings,
+
   // Thermostat control tools (these actually touch hardware/APIs)
-  'thermostat.set_temperature': async (args) => {
+  "thermostat.set_temperature": async (args) => {
     // This is where REAL action happens
     const { heat_setpoint, cool_setpoint } = args;
-    
+
     // Option 1: Call Ecobee API
     const ecobee = await getEcobeeConnector();
     if (ecobee) {
@@ -38,23 +38,35 @@ const TOOL_REGISTRY = {
           desiredCool: cool_setpoint ? cool_setpoint * 10 : undefined,
         },
       });
-      return { success: true, message: `Temperature set to ${heat_setpoint || cool_setpoint}°F` };
+      return {
+        success: true,
+        message: `Temperature set to ${heat_setpoint || cool_setpoint}°F`,
+      };
     }
-    
+
     // Option 2: Write to state file (for local testing)
-    const state = await readFile('state/current_status.json');
+    const state = await readFile("state/current_status.json");
     if (state.data) {
       state.data.thermostat.targetTemp = heat_setpoint || cool_setpoint;
-      await writeFile('state/current_status.json', JSON.stringify(state.data, null, 2));
-      return { success: true, message: `Temperature set to ${heat_setpoint || cool_setpoint}°F` };
+      await writeFile(
+        "state/current_status.json",
+        JSON.stringify(state.data, null, 2)
+      );
+      return {
+        success: true,
+        message: `Temperature set to ${heat_setpoint || cool_setpoint}°F`,
+      };
     }
-    
-    return { error: true, message: 'Could not set temperature - no API or state file available' };
+
+    return {
+      error: true,
+      message: "Could not set temperature - no API or state file available",
+    };
   },
-  
-  'thermostat.set_mode': async (args) => {
+
+  "thermostat.set_mode": async (args) => {
     const { mode } = args; // 'heat', 'cool', 'auto', 'off'
-    
+
     const ecobee = await getEcobeeConnector();
     if (ecobee) {
       await ecobee.updateSettings({
@@ -62,53 +74,60 @@ const TOOL_REGISTRY = {
       });
       return { success: true, message: `Mode set to ${mode}` };
     }
-    
+
     // Fallback to state file
-    const state = await readFile('state/current_status.json');
+    const state = await readFile("state/current_status.json");
     if (state.data) {
       state.data.thermostat.mode = mode;
-      await writeFile('state/current_status.json', JSON.stringify(state.data, null, 2));
+      await writeFile(
+        "state/current_status.json",
+        JSON.stringify(state.data, null, 2)
+      );
       return { success: true, message: `Mode set to ${mode}` };
     }
-    
-    return { error: true, message: 'Could not set mode' };
+
+    return { error: true, message: "Could not set mode" };
   },
-  
-  'hvac.write_setting': async (args) => {
+
+  "hvac.write_setting": async (args) => {
     const { path, value } = args;
-    
+
     // Write to config file
     const config = await readFile(path);
     if (config.error) {
       return { error: true, message: `Config file not found: ${path}` };
     }
-    
+
     // Update value (simplified - would need proper JSON path handling)
     config.data = { ...config.data, ...value };
     await writeFile(path, JSON.stringify(config.data, null, 2));
-    
+
     return { success: true, message: `Setting updated in ${path}` };
   },
-  
-  'thermostat.get_status': async () => {
+
+  "thermostat.get_status": async () => {
     return await getCurrentState();
   },
-  
-  'get_aux_heat_runtime': async (args) => {
+
+  get_aux_heat_runtime: async (args) => {
     const { date } = args || {};
-    
+
     // Query database or read logs
-    const events = await readFile('state/heating_events.json');
+    const events = await readFile("state/heating_events.json");
     if (events.data) {
-      const auxEvents = events.data.events.filter(e => 
-        e.type === 'aux_heat_activation' && 
-        (!date || e.timestamp.startsWith(date))
+      const auxEvents = events.data.events.filter(
+        (e) =>
+          e.type === "aux_heat_activation" &&
+          (!date || e.timestamp.startsWith(date))
       );
-      const totalMinutes = auxEvents.reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
+      const totalMinutes = auxEvents.reduce(
+        (sum, e) => sum + (e.durationMinutes || 0),
+        0
+      );
       return { success: true, runtimeMinutes: totalMinutes, events: auxEvents };
     }
-    
-    return { error: true, message: 'No heating events data available' };
+
+    return { error: true, message: "No heating events data available" };
   },
 };
 
@@ -118,23 +137,25 @@ const TOOL_REGISTRY = {
  */
 export async function executeToolCall(toolCall) {
   const { tool, arguments: args } = toolCall;
-  
+
   // Validate tool exists
   if (!TOOL_REGISTRY[tool]) {
     return {
       error: true,
-      message: `Unknown tool: ${tool}. Available tools: ${Object.keys(TOOL_REGISTRY).join(', ')}`,
+      message: `Unknown tool: ${tool}. Available tools: ${Object.keys(
+        TOOL_REGISTRY
+      ).join(", ")}`,
     };
   }
-  
+
   // Validate arguments (simplified - would use JSON schema in production)
-  if (!args || typeof args !== 'object') {
+  if (!args || typeof args !== "object") {
     return {
       error: true,
       message: `Invalid arguments for tool ${tool}. Expected object, got ${typeof args}`,
     };
   }
-  
+
   // Execute the tool (THIS IS WHERE REAL ACTION HAPPENS)
   try {
     const result = await TOOL_REGISTRY[tool](args);
@@ -155,7 +176,7 @@ export async function executeToolCall(toolCall) {
  */
 export function parseToolCalls(llmResponse) {
   const toolCalls = [];
-  
+
   // Try to parse as JSON first (structured format)
   try {
     const json = JSON.parse(llmResponse);
@@ -167,13 +188,14 @@ export function parseToolCalls(llmResponse) {
   } catch {
     // Not JSON - try to extract from natural language
     // Look for patterns like "call thermostat.set_temperature" or "use tool X"
-    const toolPattern = /(?:call|use|execute)\s+(\w+(?:\.\w+)*)\s*(?:with|using)?\s*(?:args|arguments)?\s*:?\s*({[^}]*})?/gi;
+    const toolPattern =
+      /(?:call|use|execute)\s+(\w+(?:\.\w+)*)\s*(?:with|using)?\s*(?:args|arguments)?\s*:?\s*({[^}]*})?/gi;
     let match;
-    
+
     while ((match = toolPattern.exec(llmResponse)) !== null) {
       const tool = match[1];
       let args = {};
-      
+
       if (match[2]) {
         try {
           args = JSON.parse(match[2]);
@@ -182,15 +204,17 @@ export function parseToolCalls(llmResponse) {
           const kvPattern = /(\w+):\s*([^\s,}]+)/g;
           let kvMatch;
           while ((kvMatch = kvPattern.exec(match[2])) !== null) {
-            args[kvMatch[1]] = isNaN(kvMatch[2]) ? kvMatch[2] : Number(kvMatch[2]);
+            args[kvMatch[1]] = isNaN(kvMatch[2])
+              ? kvMatch[2]
+              : Number(kvMatch[2]);
           }
         }
       }
-      
+
       toolCalls.push({ tool, arguments: args });
     }
   }
-  
+
   return toolCalls;
 }
 
@@ -204,16 +228,20 @@ export function parseToolCalls(llmResponse) {
 export async function agentLoop(userQuestion, apiKey, maxIterations = 5) {
   const conversationHistory = [];
   let iteration = 0;
-  
+
   while (iteration < maxIterations) {
     iteration++;
-    
+
     // 1. LLM generates response (may include tool calls)
-    const llmResponse = await callLLM(userQuestion, conversationHistory, apiKey);
-    
+    const llmResponse = await callLLM(
+      userQuestion,
+      conversationHistory,
+      apiKey
+    );
+
     // 2. Parse tool calls from LLM response
     const toolCalls = parseToolCalls(llmResponse);
-    
+
     // 3. If no tool calls, LLM is done - return final answer
     if (toolCalls.length === 0) {
       return {
@@ -222,36 +250,43 @@ export async function agentLoop(userQuestion, apiKey, maxIterations = 5) {
         iterations: iteration,
       };
     }
-    
+
     // 4. Execute each tool call (THIS IS WHERE REAL ACTION HAPPENS)
     const toolResults = [];
     for (const toolCall of toolCalls) {
-      console.log(`[Agent] Executing tool: ${toolCall.tool}`, toolCall.arguments);
+      console.log(
+        `[Agent] Executing tool: ${toolCall.tool}`,
+        toolCall.arguments
+      );
       const result = await executeToolCall(toolCall);
       toolResults.push({
         tool: toolCall.tool,
         result,
       });
     }
-    
+
     // 5. Feed results back to LLM
     conversationHistory.push({
-      role: 'assistant',
+      role: "assistant",
       content: llmResponse,
     });
-    
+
     conversationHistory.push({
-      role: 'user',
-      content: `Tool execution results:\n${JSON.stringify(toolResults, null, 2)}\n\nContinue with the original question: ${userQuestion}`,
+      role: "user",
+      content: `Tool execution results:\n${JSON.stringify(
+        toolResults,
+        null,
+        2
+      )}\n\nContinue with the original question: ${userQuestion}`,
     });
-    
+
     // 6. LLM processes results and continues
     // (loop continues)
   }
-  
+
   return {
     error: true,
-    message: 'Agent loop exceeded maximum iterations',
+    message: "Agent loop exceeded maximum iterations",
     iterations,
   };
 }
@@ -261,12 +296,21 @@ export async function agentLoop(userQuestion, apiKey, maxIterations = 5) {
  * LLM sees available tools and can suggest which to use
  */
 async function callLLM(userQuestion, conversationHistory, apiKey) {
-  const systemPrompt = `You are Joule, an HVAC assistant. You have NO built-in knowledge.
+  const systemPrompt = `You are Joule, a friendly and knowledgeable HVAC energy assistant. You're that helpful neighbor who happens to be an HVAC expert - approachable, enthusiastic about energy efficiency, and genuinely interested in helping homeowners.
 
-You get intelligence from TOOLS. When you need information, suggest a tool call.
+YOUR PERSONALITY:
+- Warm and conversational, but never condescending
+- Enthusiastic about energy efficiency and helping people save money
+- Patient with technical questions - you love explaining how things work
+- Honest about what you know and don't know
+- Use friendly language: "Here's what I found..." "Great question!" "Let me break that down..."
+
+You get intelligence from TOOLS. When you need information, suggest a tool call with enthusiasm.
 
 AVAILABLE TOOLS:
-${Object.keys(TOOL_REGISTRY).map(tool => `- ${tool}`).join('\n')}
+${Object.keys(TOOL_REGISTRY)
+  .map((tool) => `- ${tool}`)
+  .join("\n")}
 
 When you need to:
 - Get data → use read_file(), query_database(), get_current_state()
@@ -277,36 +321,39 @@ When you need to:
 Format tool calls as JSON:
 {"tool": "tool_name", "arguments": {"arg1": "value1"}}
 
-Or describe what tool you'd use in natural language.`;
+Or describe what tool you'd use in natural language with personality - like "Let me check that for you!" or "I'll look that up right away!"`;
 
   const messages = [
-    { role: 'system', content: systemPrompt },
+    { role: "system", content: systemPrompt },
     ...conversationHistory,
-    { role: 'user', content: userQuestion },
+    { role: "user", content: userQuestion },
   ];
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'llama-3.1-8b-instant',
-      messages,
-      temperature: 0.7,
-      max_tokens: 500,
-    }),
-  });
+  const response = await fetch(
+    "https://api.groq.com/openai/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages,
+        temperature: 0.7,
+        max_tokens: 500,
+      }),
+    }
+  );
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
+  return data.choices?.[0]?.message?.content || "";
 }
 
 // Helper to get Ecobee connector (if available)
 async function getEcobeeConnector() {
   try {
-    const { connectToEcobee } = await import('./apiConnectors.js');
+    const { connectToEcobee } = await import("./apiConnectors.js");
     return await connectToEcobee();
   } catch {
     return null;
@@ -320,4 +367,3 @@ async function writeFile(path, content) {
   console.log(`[Agent] Would write to ${path}:`, content.substring(0, 100));
   return { success: true };
 }
-

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="216mm" height="200mm" viewBox="0 0 216 200">
+  <!-- Styles -->
+  <style>
+    .cut-line { fill: none; stroke: #000000; stroke-width: 0.2; }
+    .tablet-line { fill: none; stroke: #FF0000; stroke-width: 0.2; }
+    .label-text { font-family: sans-serif; font-size: 4px; fill: #0000FF; text-anchor: middle; }
+    .sub-text { font-family: sans-serif; font-size: 3px; fill: #0000FF; text-anchor: middle; }
+  </style>
+
+  <!-- Outer Material Boundary (Reference) -->
+  <rect x="0" y="0" width="216" height="200" class="cut-line" stroke-dasharray="2,2"/>
+
+  <!-- ========================================== -->
+  <!-- TOP SECTION: Tablet Cutout                 -->
+  <!-- ========================================== -->
+  <!-- Centered X: (216-180)/2 = 18 -->
+  <rect x="18" y="10" width="180" height="109" class="tablet-line" />
+  
+  <text x="108" y="60" class="label-text">ONN Surf 7" Tablet (Front)</text>
+  <text x="108" y="66" class="sub-text">180mm x 109mm</text>
+
+
+  <!-- ========================================== -->
+  <!-- MIDDLE SECTION: Component Modules          -->
+  <!-- ========================================== -->
+  <!-- Row Y start: 130mm (109mm tablet + 10mm top margin + 11mm gap) -->
+  
+  <!-- 1. USB Hub -->
+  <rect x="12" y="130" width="38" height="30" class="cut-line" />
+  <text x="31" y="145" class="label-text">USB Hub</text>
+
+  <!-- 2. USB Relay Module -->
+  <rect x="62" y="130" width="38" height="30" class="cut-line" />
+  <text x="81" y="142" class="label-text">USB Relay</text>
+  <text x="81" y="147" class="sub-text">Module</text>
+
+  <!-- 3. 24V -> 5V Converter -->
+  <rect x="112" y="130" width="38" height="30" class="cut-line" />
+  <text x="131" y="142" class="label-text">24V->5V</text>
+  <text x="131" y="147" class="sub-text">USB Conv.</text>
+
+  <!-- 4. 24V -> 12V Converter -->
+  <rect x="162" y="130" width="38" height="30" class="cut-line" />
+  <text x="181" y="142" class="label-text">24V->12V</text>
+  <text x="181" y="147" class="sub-text">Conv.</text>
+
+
+  <!-- ========================================== -->
+  <!-- BOTTOM SECTION: Wiring Channel             -->
+  <!-- ========================================== -->
+  <rect x="12" y="170" width="192" height="18" rx="2" ry="2" class="cut-line" />
+  <text x="108" y="178" class="label-text">Wiring Channel / Pass-through</text>
+  <text x="108" y="183" class="sub-text">(HVAC wires, USB cables)</text>
+
+
+  <!-- ========================================== -->
+  <!-- MOUNTING HOLES                             -->
+  <!-- ========================================== -->
+  <!-- Corner mounting holes -->
+  <circle cx="8" cy="8" r="2" class="cut-line" />
+  <circle cx="208" cy="8" r="2" class="cut-line" />
+  <circle cx="8" cy="192" r="2" class="cut-line" />
+  <circle cx="208" cy="192" r="2" class="cut-line" />
+
+</svg>

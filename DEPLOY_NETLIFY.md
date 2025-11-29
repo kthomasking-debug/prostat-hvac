@@ -13,7 +13,7 @@ Netlify is **easier** than GitHub Pages! You can drag-and-drop your `dist` folde
    ```
 
    Or use the generic build (defaults to `/` base path):
-   
+
    ```bash
    npm run build
    ```

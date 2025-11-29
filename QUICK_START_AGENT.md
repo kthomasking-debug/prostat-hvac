@@ -39,6 +39,7 @@ engineering-tools/
 ## 🚀 Setup (3 Steps)
 
 ### 1. Create Directories
+
 ```bash
 # Windows
 powershell -ExecutionPolicy ByPass -File setup-agent-structure.ps1
@@ -48,6 +49,7 @@ bash setup-agent-structure.sh
 ```
 
 ### 2. Copy Sample Files
+
 ```bash
 # Copy example files to actual files
 cp state/current_status.json.example state/current_status.json
@@ -56,6 +58,7 @@ cp config/policy.json.example config/policy.json
 ```
 
 ### 3. Configure Ecobee API (Optional)
+
 1. Register at https://www.ecobee.com/developers/
 2. Create app, get API key
 3. Authorize and get tokens
@@ -95,47 +98,61 @@ When you don't know something, use tools to find out. Don't make things up.`;
 ## 🧰 7 Core Tools
 
 ### 1. `read_file(path)`
+
 Reads files: state, config, logs, knowledge
+
 ```javascript
-read_file('state/current_status.json')
-read_file('config/policy.json')
-read_file('knowledge/aux_heat_guide.md')
+read_file("state/current_status.json");
+read_file("config/policy.json");
+read_file("knowledge/aux_heat_guide.md");
 ```
 
 ### 2. `query_database(sql)`
+
 Queries historical data
+
 ```javascript
-query_database("SELECT * FROM heating_events WHERE date = today")
+query_database("SELECT * FROM heating_events WHERE date = today");
 ```
 
 ### 3. `run_terminal(command)`
+
 Executes system commands (whitelisted)
+
 ```javascript
-run_terminal('curl http://local-api/sensors')
+run_terminal("curl http://local-api/sensors");
 ```
 
 ### 4. `browse(url)`
+
 Fetches from APIs
+
 ```javascript
-browse('https://api.ecobee.com/1/thermostat')
+browse("https://api.ecobee.com/1/thermostat");
 ```
 
 ### 5. `search_knowledge(query)`
+
 Searches documentation
+
 ```javascript
-search_knowledge('aux heat threshold')
+search_knowledge("aux heat threshold");
 ```
 
 ### 6. `get_current_state()`
+
 Gets live thermostat data
+
 ```javascript
-get_current_state()
+get_current_state();
 ```
 
 ### 7. `get_user_settings()`
+
 Gets system configuration
+
 ```javascript
-get_user_settings()
+get_user_settings();
 ```
 
 ---
@@ -143,6 +160,7 @@ get_user_settings()
 ## 📄 Sample State Files
 
 ### `state/current_status.json`
+
 ```json
 {
   "timestamp": "2025-11-24T10:30:00Z",
@@ -164,6 +182,7 @@ get_user_settings()
 ```
 
 ### `config/settings.json`
+
 ```json
 {
   "system": {
@@ -181,6 +200,7 @@ get_user_settings()
 ```
 
 ### `config/policy.json`
+
 ```json
 {
   "safety": {
@@ -201,10 +221,10 @@ get_user_settings()
 **File:** `src/lib/apiConnectors.js`
 
 ```javascript
-import { EcobeeConnector } from './apiConnectors.js';
+import { EcobeeConnector } from "./apiConnectors.js";
 
 // Connect
-const config = await readFile('config/ecobee_config.json');
+const config = await readFile("config/ecobee_config.json");
 const ecobee = new EcobeeConnector(config.data);
 
 // Sync state
@@ -213,7 +233,7 @@ await ecobee.syncToStateFile();
 // Get data
 const summary = await ecobee.getSummary();
 const thermostat = await ecobee.getThermostat();
-const runtime = await ecobee.getRuntimeReport('2025-11-24', '2025-11-24');
+const runtime = await ecobee.getRuntimeReport("2025-11-24", "2025-11-24");
 ```
 
 ---
@@ -240,15 +260,18 @@ const runtime = await ecobee.getRuntimeReport('2025-11-24', '2025-11-24');
 ## ✅ Key Files Created
 
 ### Documentation
+
 - ✅ `AGENT_IMPLEMENTATION_GUIDE.md` - Complete guide (this is the detailed version)
 - ✅ `QUICK_START_AGENT.md` - This file (quick reference)
 
 ### Code
+
 - ✅ `src/lib/groqAgent.js` - Main agent (minimal prompt)
 - ✅ `src/lib/agentTools.js` - Tool definitions (7 tools)
 - ✅ `src/lib/apiConnectors.js` - Ecobee API connector
 
 ### Sample Files
+
 - ✅ `state/current_status.json.example`
 - ✅ `config/settings.json.example`
 - ✅ `config/policy.json.example`
@@ -257,6 +280,7 @@ const runtime = await ecobee.getRuntimeReport('2025-11-24', '2025-11-24');
 - ✅ `agent/NOTES.md.example`
 
 ### Setup Scripts
+
 - ✅ `setup-agent-structure.ps1` - Windows
 - ✅ `setup-agent-structure.sh` - Linux/Mac
 
@@ -265,11 +289,13 @@ const runtime = await ecobee.getRuntimeReport('2025-11-24', '2025-11-24');
 ## 🎯 Summary
 
 **The LLM = Brain (reasoning only)**
+
 - No built-in knowledge
 - Understands natural language
 - Reasons from data
 
 **Tools = Eyes, Hands, Sensors**
+
 - `read_file()` - Read state/config
 - `query_database()` - Historical data
 - `browse()` - API calls
@@ -277,6 +303,7 @@ const runtime = await ecobee.getRuntimeReport('2025-11-24', '2025-11-24');
 - etc.
 
 **Files = Memory**
+
 - `state/` - Live data
 - `config/` - Settings
 - `agent/PLAN.md` - Short-term memory
@@ -289,8 +316,8 @@ const runtime = await ecobee.getRuntimeReport('2025-11-24', '2025-11-24');
 ## 📚 Full Documentation
 
 See `AGENT_IMPLEMENTATION_GUIDE.md` for:
+
 - Complete tool implementations
 - Full Ecobee API connector code
 - Detailed examples
 - Setup instructions
-

@@ -3,6 +3,7 @@
 ## What Sensors Are Typically Available
 
 ### ✅ Standard Thermostat Sensors (Usually Available)
+
 - **Indoor temperature** - Main thermostat sensor
 - **Target/setpoint temperature** - User's desired temp
 - **HVAC mode** - Heat, cool, auto, off
@@ -10,6 +11,7 @@
 - **Outdoor temperature** - If weather service connected
 
 ### ❌ Advanced Diagnostic Sensors (Usually NOT Available)
+
 These require specialized equipment or professional installation:
 
 - **Supply air temperature** - Requires sensor in ductwork
@@ -29,18 +31,22 @@ These require specialized equipment or professional installation:
 When asked about unavailable sensors:
 
 1. **Acknowledge the question is valid**
+
    - "That's a great diagnostic question"
    - "I understand you want to check [metric]"
 
 2. **Explain what's missing**
+
    - "I don't have a [specific sensor] installed"
    - "That requires [equipment] which isn't available in this system"
 
 3. **Explain why it's missing**
+
    - "Supply air temperature requires a sensor installed in the ductwork"
    - "Real-time watt monitoring requires a current clamp or power meter"
 
 4. **Suggest alternatives (if any)**
+
    - "I can't measure that directly, but I can tell you [related info]"
    - "Based on [available data], I can estimate..."
 
@@ -59,4 +65,3 @@ When asked about unavailable sensors:
 
 **Q: "What's the current compressor stage?"**
 **A:** "I don't have access to the compressor stage information. That requires direct communication with the outdoor unit's control board, which most thermostats don't provide. I can tell you the system is running in heat mode, but I can't see whether it's stage 1 or stage 2 without that connection."
-

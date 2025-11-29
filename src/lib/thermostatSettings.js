@@ -34,23 +34,24 @@ export const DEFAULT_THERMOSTAT_SETTINGS = {
   },
 
   // Installation Settings → Thresholds
+  // "Vanilla Ice Cream" Safe Defaults Profile
   thresholds: {
-    autoHeatCool: true, // Allow Auto mode
-    heatCoolMinDelta: 3, // Minimum gap between heat/cool setpoints in Auto mode (°F)
-    staging: "auto", // 'auto' | 'manual'
-    compressorMinCycleOff: 300, // seconds (5 minutes default)
-    compressorMinOutdoorTemp: 0, // °F - won't run below this
+    autoHeatCool: false, // Disabled - safer for new users
+    heatCoolMinDelta: 5, // Minimum gap between heat/cool setpoints in Auto mode (°F) - Safe default
+    staging: "auto", // 'auto' | 'manual' - Automatic staging enabled
+    compressorMinCycleOff: 300, // seconds (5 minutes) - Safe minimum
+    compressorMinOutdoorTemp: 35, // °F - Compressor lockout at 35°F (safety)
     acOvercoolMax: 2, // °F - max overcool for dehumidification
-    auxHeatMaxOutdoorTemp: 40, // °F - aux heat won't run above this
-    heatDifferential: 0.5, // °F - dead band for heating
-    heatDissipationTime: 0, // seconds - fan run time after heat stops
-    heatMinOnTime: 300, // seconds (5 minutes)
-    coolDifferential: 0.5, // °F - dead band for cooling
-    coolDissipationTime: 0, // seconds - fan run time after cool stops
-    coolMinOnTime: 300, // seconds (5 minutes)
-    compressorReverseStaging: true,
-    temperatureCorrection: 0, // °F offset
-    humidityCorrection: 0, // % offset
+    auxHeatMaxOutdoorTemp: 50, // °F - aux heat won't run above this (safety)
+    heatDifferential: 0.5, // °F - dead band for heating (safe default)
+    heatDissipationTime: 30, // seconds - fan run time after heat stops (efficiency)
+    heatMinOnTime: 300, // seconds (5 minutes) - Safe minimum
+    coolDifferential: 0.5, // °F - dead band for cooling (safe default)
+    coolDissipationTime: 30, // seconds - fan run time after cool stops (efficiency)
+    coolMinOnTime: 300, // seconds (5 minutes) - Safe minimum
+    compressorReverseStaging: true, // Enabled for efficiency
+    temperatureCorrection: 0, // °F offset - No correction
+    humidityCorrection: 0, // % offset - No correction
     thermalProtect: 10, // °F - max difference before ignoring sensor
     installerCode: null, // 4-digit code (null = disabled)
   },
@@ -60,21 +61,33 @@ export const DEFAULT_THERMOSTAT_SETTINGS = {
     home: {
       heatSetPoint: 70,
       coolSetPoint: 74,
+      humiditySetPoint: 50, // Target relative humidity (%)
       fanMode: "auto", // 'auto' | 'on'
       sensors: ["main"], // sensor IDs to use
     },
     away: {
       heatSetPoint: 62,
       coolSetPoint: 85,
+      humiditySetPoint: 60, // Higher humidity acceptable when away
       fanMode: "auto",
       sensors: ["main"],
     },
     sleep: {
       heatSetPoint: 66,
       coolSetPoint: 72,
+      humiditySetPoint: 50,
       fanMode: "auto",
       sensors: ["main"],
     },
+  },
+
+  // Dehumidifier Control Settings
+  dehumidifier: {
+    enabled: false, // Enable dehumidifier control
+    humidityDeadband: 5, // Turn on when RH > setpoint + deadband, off when RH < setpoint - deadband
+    minOnTime: 300, // Minimum on time in seconds (5 minutes)
+    minOffTime: 300, // Minimum off time in seconds (5 minutes)
+    relayTerminal: "Y2", // Relay terminal to use (Y2 = cooling relay 2, or custom)
   },
 
   // Schedule (simplified - weekly schedule)
@@ -319,4 +332,137 @@ export function getCurrentSetpoints(settings = null) {
   const s = settings || loadThermostatSettings();
   const comfortSetting = getCurrentComfortSetting(s);
   return s.comfortSettings[comfortSetting] || s.comfortSettings.home;
+}
+
+/**
+ * Optimized Settings Profile
+ * Upgrades from "Safe Defaults" to "Optimized Settings" for better efficiency
+ * after user has data and understands the system
+ */
+export const OPTIMIZED_THERMOSTAT_SETTINGS = {
+  thresholds: {
+    autoHeatCool: false, // Still disabled for safety
+    heatCoolMinDelta: 5, // Keep 5°F min delta
+    staging: "auto", // Automatic staging
+    compressorMinCycleOff: 300, // Keep 300s minimum
+    compressorMinOutdoorTemp: 35, // Keep 35°F lockout
+    acOvercoolMax: 2, // Keep 2°F overcool max
+    auxHeatMaxOutdoorTemp: 30, // Lowered to 30°F for better efficiency (was 50°F)
+    heatDifferential: 1.0, // Increased from 0.5°F to 1.0°F for efficiency
+    heatDissipationTime: 60, // Increased from 30s to 60s for better efficiency
+    heatMinOnTime: 300, // Keep 300s minimum
+    coolDifferential: 1.0, // Increased from 0.5°F to 1.0°F for efficiency
+    coolDissipationTime: 60, // Increased from 30s to 60s for better efficiency
+    coolMinOnTime: 300, // Keep 300s minimum
+    compressorReverseStaging: true, // Keep enabled
+    temperatureCorrection: 0, // No correction
+    humidityCorrection: 0, // No correction
+    thermalProtect: 10, // Keep 10°F
+    installerCode: null, // Keep disabled
+  },
+};
+
+/**
+ * Apply optimized settings to current thermostat settings
+ * Upgrades from safe defaults to optimized profile
+ * @param {Object} currentSettings - Current thermostat settings (optional, loads if not provided)
+ * @returns {Object} Updated settings with optimized thresholds
+ */
+export function applyOptimizedSettings(currentSettings = null) {
+  const settings = currentSettings || loadThermostatSettings();
+
+  // Merge optimized thresholds into current settings
+  const optimized = {
+    ...settings,
+    thresholds: {
+      ...settings.thresholds,
+      ...OPTIMIZED_THERMOSTAT_SETTINGS.thresholds,
+    },
+  };
+
+  // Save the optimized settings
+  saveThermostatSettings(optimized);
+
+  return optimized;
+}
+
+/**
+ * Check if settings are currently using safe defaults
+ * @param {Object} settings - Thermostat settings (optional, loads if not provided)
+ * @returns {boolean} True if using safe defaults
+ */
+export function isUsingSafeDefaults(settings = null) {
+  const s = settings || loadThermostatSettings();
+  const thresholds = s.thresholds || {};
+
+  // Check key indicators of safe defaults
+  return (
+    thresholds.heatDifferential === 0.5 &&
+    thresholds.coolDifferential === 0.5 &&
+    thresholds.heatDissipationTime === 30 &&
+    thresholds.coolDissipationTime === 30 &&
+    thresholds.auxHeatMaxOutdoorTemp === 50
+  );
+}
+
+/**
+ * Get optimization recommendations based on current settings
+ * @param {Object} settings - Thermostat settings (optional, loads if not provided)
+ * @returns {Object} Recommendations object with suggested changes
+ */
+export function getOptimizationRecommendations(settings = null) {
+  const s = settings || loadThermostatSettings();
+  const thresholds = s.thresholds || {};
+  const recommendations = [];
+
+  if (thresholds.heatDifferential === 0.5) {
+    recommendations.push({
+      setting: "Heat Differential",
+      current: "0.5°F",
+      recommended: "1.0°F",
+      benefit: "Reduces cycling, improves efficiency, maintains comfort",
+    });
+  }
+
+  if (thresholds.coolDifferential === 0.5) {
+    recommendations.push({
+      setting: "Cool Differential",
+      current: "0.5°F",
+      recommended: "1.0°F",
+      benefit: "Reduces cycling, improves efficiency, maintains comfort",
+    });
+  }
+
+  if (thresholds.heatDissipationTime === 30) {
+    recommendations.push({
+      setting: "Heat Dissipation Time",
+      current: "30s",
+      recommended: "60s",
+      benefit: "Better heat distribution, improved efficiency",
+    });
+  }
+
+  if (thresholds.coolDissipationTime === 30) {
+    recommendations.push({
+      setting: "Cool Dissipation Time",
+      current: "30s",
+      recommended: "60s",
+      benefit: "Better cooling distribution, improved efficiency",
+    });
+  }
+
+  if (thresholds.auxHeatMaxOutdoorTemp === 50) {
+    recommendations.push({
+      setting: "Aux Heat Lockout",
+      current: "50°F",
+      recommended: "30°F",
+      benefit: "Maximizes heat pump efficiency, reduces aux heat usage",
+    });
+  }
+
+  return {
+    hasRecommendations: recommendations.length > 0,
+    recommendations,
+    canOptimize: recommendations.length > 0,
+  };
 }

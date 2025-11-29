@@ -9,20 +9,29 @@ const HEADER_SYNONYMS = {
     /^outdoor temperature\s*\(f\)/i,
     /^outdoor temperature$/i,
     /^outside temperature$/i,
+    /^outdoor tel$/i, // Ecobee truncated: "Outdoor Tel"
+    /^outdoor\s*tel/i,
   ],
   "Thermostat Temperature (F)": [
     /^(thermostat|indoor|inside)[^a-zA-Z0-9_]*temp/i,
     /^indoor temperature\s*\(f\)/i,
     /^thermostat temperature$/i,
     /^temperature\s*\(f\)$/i,
+    /^current ten$/i, // Ecobee truncated: "Current Ten" (Current Temperature)
+    /^current\s*ten/i,
+    /^current temp/i,
   ],
   "Heat Stage 1 (sec)": [
     /^(heat|compressor|stage\s*1|hp stage 1).*?(sec|seconds|runtime|run time|time)$/i,
     /^heat stage 1$/i,
+    /^heat stage$/i, // Ecobee: "Heat Stage" (without "1" or units)
+    /^heat\s*stage$/i,
   ],
   "Aux Heat 1 (sec)": [
     /^(aux|auxiliary).*?(heat).*?(sec|seconds|runtime|run time|time)$/i,
     /^aux heat 1$/i,
+    /^aux heat 1\s*\(fan\s*\(sec\)\)$/i, // Ecobee: "Aux Heat 1 (Fan (sec))"
+    /^aux heat 1\s*\(fan/i,
   ],
 };
 
@@ -101,15 +110,17 @@ export const normalizeCsvData = (headers, data) => {
   const headerMap = buildHeaderMap(headers);
   const outKey =
     headerMap["Outdoor Temp (F)"] ||
-    headers.find((h) => /outdoor.*temp/i.test(h)) ||
+    headers.find((h) => /outdoor.*temp|outdoor\s*tel/i.test(h)) ||
     "Outdoor Temp (F)";
   const inKey =
     headerMap["Thermostat Temperature (F)"] ||
-    headers.find((h) => /(thermostat|indoor).*temp/i.test(h)) ||
+    headers.find((h) =>
+      /(thermostat|indoor|current\s*ten).*temp|current\s*ten/i.test(h)
+    ) ||
     "Thermostat Temperature (F)";
   const stageKey =
     headerMap["Heat Stage 1 (sec)"] ||
-    headers.find((h) => /(heat|compressor).*stage.*1/i.test(h)) ||
+    headers.find((h) => /(heat|compressor).*stage/i.test(h)) ||
     "Heat Stage 1 (sec)";
   const auxKey =
     headerMap["Aux Heat 1 (sec)"] ||

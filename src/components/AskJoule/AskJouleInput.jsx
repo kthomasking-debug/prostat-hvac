@@ -43,12 +43,10 @@ export const AskJouleInput = ({
   wakeWordSupported,
   isWakeWordListening,
   wakeWordError,
-  salesMode = false,
+  salesMode = false
 }) => {
   // Static placeholder text - use sales placeholders if in sales mode
-  const displayPlaceholder = salesMode
-    ? SALES_PLACEHOLDER_SUGGESTIONS[0]
-    : PLACEHOLDER_SUGGESTIONS[0];
+  const displayPlaceholder = salesMode ? SALES_PLACEHOLDER_SUGGESTIONS[0] : PLACEHOLDER_SUGGESTIONS[0];
 
   return (
     <div className="space-y-2">
@@ -62,11 +60,7 @@ export const AskJouleInput = ({
             type="text"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            onFocus={() =>
-              value.length > 2 &&
-              suggestions.length > 0 &&
-              setShowSuggestions(true)
-            }
+            onFocus={() => value.length > 2 && suggestions.length > 0 && setShowSuggestions(true)}
             placeholder={value ? placeholder : displayPlaceholder}
             className="w-full p-2.5 rounded-lg border-2 border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-800 text-base text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 dark:focus:border-blue-400 focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-900 outline-none transition-all duration-300"
             aria-label="Ask Joule"
@@ -111,24 +105,20 @@ export const AskJouleInput = ({
                   isListening ? "btn-primary listening-pulse" : "btn-outline"
                 }`}
                 onClick={toggleListening}
-                title={
-                  isListening ? "Listening... Click to stop" : "Click to speak"
-                }
+                title={isListening ? "Listening... Click to stop" : "Click to speak"}
               >
                 {isListening ? (
                   <>
                     <Mic size={16} className="text-white" />
                     <span className="speaking-indicator">
-                      <span></span>
-                      <span></span>
-                      <span></span>
+                      <span></span><span></span><span></span>
                     </span>
                   </>
                 ) : (
                   <MicOff size={16} />
                 )}
               </button>
-
+              
               <button
                 type="button"
                 className={`btn px-2.5 py-2 text-xs flex items-center gap-1.5 ${
@@ -140,9 +130,7 @@ export const AskJouleInput = ({
                 {speechEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                 {isSpeaking && (
                   <span className="speaking-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
+                    <span></span><span></span><span></span>
                   </span>
                 )}
               </button>
@@ -162,8 +150,7 @@ export const AskJouleInput = ({
               className="btn btn-outline px-2 py-2 text-xs font-medium"
               onClick={() => setShowAudit((s) => !s)}
             >
-              History
-              {auditLog && auditLog.length > 0 ? ` (${auditLog.length})` : ""}
+              History{auditLog && auditLog.length > 0 ? ` (${auditLog.length})` : ""}
             </button>
           </div>
         </div>
@@ -171,9 +158,10 @@ export const AskJouleInput = ({
 
       {/* Helpful note - moved to less prominent position */}
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 opacity-60">
-        {salesMode
+        {salesMode 
           ? "Get instant answers about compatibility, pricing, shipping, and features."
-          : "Answers based on ASHRAE standards and your home's settings."}
+          : "Answers based on ASHRAE standards and your home's settings."
+        }
       </p>
 
       {/* Settings Toggle */}
@@ -186,7 +174,7 @@ export const AskJouleInput = ({
             <span>{showPersonalization ? "▼" : "▶"}</span>
             <span>Settings</span>
           </button>
-
+          
           {/* Wake Word Toggle - DEMO MODE ONLY */}
           {wakeWordSupported && recognitionSupported && (
             <div className="space-y-1">
@@ -199,9 +187,7 @@ export const AskJouleInput = ({
                 />
                 <span className="flex items-center gap-1">
                   <span>Wake Word: "Hey Pico"</span>
-                  <span className="text-orange-500 text-[10px] font-semibold">
-                    (DEMO)
-                  </span>
+                  <span className="text-orange-500 text-[10px] font-semibold">(DEMO)</span>
                 </span>
                 {isWakeWordListening && (
                   <span className="text-green-600 dark:text-green-400 animate-pulse ml-2">
@@ -210,14 +196,10 @@ export const AskJouleInput = ({
                 )}
               </label>
               <div className="text-[10px] text-orange-600 dark:text-orange-400 ml-6 italic">
-                ⚠️ Browser demo only - requires active screen. Production will
-                use Raspberry Pi.
+                ⚠️ Browser demo only - requires active screen. Production will use Raspberry Pi.
               </div>
               {wakeWordError && (
-                <div
-                  className="text-red-500 text-[10px] ml-6"
-                  title={wakeWordError}
-                >
+                <div className="text-red-500 text-[10px] ml-6" title={wakeWordError}>
                   ⚠ {wakeWordError}
                 </div>
               )}
@@ -228,3 +210,4 @@ export const AskJouleInput = ({
     </div>
   );
 };
+

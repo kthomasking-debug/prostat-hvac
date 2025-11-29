@@ -110,28 +110,34 @@ export function AgenticResponse({ result, isProcessing, executionProgress }) {
         </div>
       </div>
 
-      {/* Confidence & Metadata */}
-      <div className="flex items-center gap-4 text-sm">
-        <div className="flex items-center gap-2">
-          <Target size={16} className="text-gray-500" />
-          <span className="text-gray-600 dark:text-gray-400">
-            Confidence: {Math.round(result.confidence * 100)}%
-          </span>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <Zap size={16} className="text-gray-500" />
-          <span className="text-gray-600 dark:text-gray-400">
-            {result.executedTools?.length || 0} tools used
-          </span>
-        </div>
+      {/* Confidence & Metadata - only show if we have these values */}
+      {(result.confidence !== undefined || result.executedTools?.length > 0 || result.tokensUsed) && (
+        <div className="flex items-center gap-4 text-sm">
+          {result.confidence !== undefined && (
+            <div className="flex items-center gap-2">
+              <Target size={16} className="text-gray-500" />
+              <span className="text-gray-600 dark:text-gray-400">
+                Confidence: {Math.round(result.confidence * 100)}%
+              </span>
+            </div>
+          )}
+          
+          {result.executedTools?.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Zap size={16} className="text-gray-500" />
+              <span className="text-gray-600 dark:text-gray-400">
+                {result.executedTools.length} tools used
+              </span>
+            </div>
+          )}
 
-        {result.metadata?.executionTime && (
-          <div className="text-gray-600 dark:text-gray-400">
-            {result.metadata.executionTime}ms
-          </div>
-        )}
-      </div>
+          {result.tokensUsed && (
+            <div className="text-gray-600 dark:text-gray-400">
+              {result.tokensUsed} tokens
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Expandable Reasoning Section */}
       {result.reasoning && (

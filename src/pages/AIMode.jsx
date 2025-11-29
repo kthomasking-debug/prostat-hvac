@@ -1,13 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { Volume2, Sparkles, TrendingUp, Calendar, Settings } from 'lucide-react';
-import AskJoule from '../components/AskJoule';
+import React, { useState, useEffect } from "react";
+import {
+  Volume2,
+  Sparkles,
+  TrendingUp,
+  Calendar,
+  Settings,
+} from "lucide-react";
+import AskJoule from "../components/AskJoule";
 
 /**
  * AI Mode - Simplified, voice-first interface with weather animations
  * This is the "conversational thermostat" dream mode
  */
-const AIMode = ({ 
-  userSettings = {}, 
+const AIMode = ({
+  userSettings = {},
   userLocation = null,
   annualEstimate = null,
   recommendations = [],
@@ -17,8 +23,8 @@ const AIMode = ({
   onUndo,
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [weatherCondition, setWeatherCondition] = useState('clear'); // clear, cloudy, rain, snow
-  const [hvacMode, setHvacMode] = useState('idle'); // idle, heating, cooling
+  const [weatherCondition, setWeatherCondition] = useState("clear"); // clear, cloudy, rain, snow
+  const [hvacMode, setHvacMode] = useState("idle"); // idle, heating, cooling
   const [showTempBriefly, setShowTempBriefly] = useState(true);
 
   // Update time every minute
@@ -40,15 +46,15 @@ const AIMode = ({
     const month = currentTime.getMonth();
     // Winter months (Nov-Mar): heating mode
     if (month >= 10 || month <= 2) {
-      setHvacMode(userSettings.winterThermostat > 68 ? 'heating' : 'idle');
-    } 
+      setHvacMode(userSettings.winterThermostat > 68 ? "heating" : "idle");
+    }
     // Summer months (Jun-Aug): cooling mode
     else if (month >= 5 && month <= 7) {
-      setHvacMode(userSettings.summerThermostat < 74 ? 'cooling' : 'idle');
+      setHvacMode(userSettings.summerThermostat < 74 ? "cooling" : "idle");
     }
     // Spring/Fall: idle
     else {
-      setHvacMode('idle');
+      setHvacMode("idle");
     }
   }, [userSettings, currentTime]);
 
@@ -56,7 +62,7 @@ const AIMode = ({
   useEffect(() => {
     if (userLocation?.weather) {
       // In production, you'd get this from actual weather API
-      setWeatherCondition('clear');
+      setWeatherCondition("clear");
     }
   }, [userLocation]);
 
@@ -77,56 +83,56 @@ const AIMode = ({
 
   const getTimeOfDayGradient = () => {
     const hour = currentTime.getHours();
-    
+
     // Night (10pm - 5am)
     if (hour >= 22 || hour < 5) {
-      return 'from-indigo-900 via-purple-900 to-blue-900';
+      return "from-indigo-900 via-purple-900 to-blue-900";
     }
     // Dawn (5am - 7am)
     if (hour >= 5 && hour < 7) {
-      return 'from-orange-300 via-pink-400 to-purple-500';
+      return "from-orange-300 via-pink-400 to-purple-500";
     }
     // Morning (7am - 11am)
     if (hour >= 7 && hour < 11) {
-      return 'from-blue-300 via-cyan-400 to-sky-400';
+      return "from-blue-300 via-cyan-400 to-sky-400";
     }
     // Afternoon (11am - 5pm)
     if (hour >= 11 && hour < 17) {
-      return 'from-sky-400 via-blue-400 to-blue-500';
+      return "from-sky-400 via-blue-400 to-blue-500";
     }
     // Evening (5pm - 7pm)
     if (hour >= 17 && hour < 19) {
-      return 'from-orange-400 via-pink-500 to-purple-600';
+      return "from-orange-400 via-pink-500 to-purple-600";
     }
     // Dusk (7pm - 10pm)
-    return 'from-purple-600 via-indigo-700 to-blue-800';
+    return "from-purple-600 via-indigo-700 to-blue-800";
   };
 
   // Quick stats for glanceable info
   const getQuickStats = () => {
     const stats = [];
-    
+
     if (annualEstimate) {
       stats.push({
         icon: <TrendingUp size={24} />,
-        label: 'Est. This Week',
-        value: `$${Math.round(annualEstimate.totalCost / 52)}`
+        label: "Est. This Week",
+        value: `$${Math.round(annualEstimate.totalCost / 52)}`,
       });
     }
-    
+
     if (userSettings.winterThermostat) {
       stats.push({
         icon: <Settings size={24} />,
-        label: 'Indoor Temp',
-        value: `${userSettings.winterThermostat}°F`
+        label: "Indoor Temp",
+        value: `${userSettings.winterThermostat}°F`,
       });
     }
-    
+
     if (userLocation) {
       stats.push({
         icon: <Calendar size={24} />,
-        label: 'Location',
-        value: userLocation.city
+        label: "Location",
+        value: userLocation.city,
       });
     }
 
@@ -134,14 +140,16 @@ const AIMode = ({
   };
 
   return (
-    <div className={`relative min-h-screen overflow-hidden transition-all duration-1000 bg-gradient-to-br ${getTimeOfDayGradient()}`}>
+    <div
+      className={`relative min-h-screen overflow-hidden transition-all duration-1000 bg-gradient-to-br ${getTimeOfDayGradient()}`}
+    >
       {/* HVAC Mode Color Overlay */}
-      {hvacMode !== 'idle' && (
-        <div 
+      {hvacMode !== "idle" && (
+        <div
           className={`absolute inset-0 pointer-events-none transition-opacity duration-2000 ${
-            hvacMode === 'heating' ? 'bg-orange-500/10' : 'bg-blue-500/10'
+            hvacMode === "heating" ? "bg-orange-500/10" : "bg-blue-500/10"
           }`}
-          style={{ animation: 'pulse 4s ease-in-out infinite' }}
+          style={{ animation: "pulse 4s ease-in-out infinite" }}
         />
       )}
 
@@ -172,8 +180,11 @@ const AIMode = ({
             <div
               key={`particle-${i}`}
               className={`particle ${
-                hvacMode === 'heating' ? 'particle-warm' : 
-                hvacMode === 'cooling' ? 'particle-cool' : 'particle-neutral'
+                hvacMode === "heating"
+                  ? "particle-warm"
+                  : hvacMode === "cooling"
+                  ? "particle-cool"
+                  : "particle-neutral"
               }`}
               style={{
                 left: `${Math.random() * 100}%`,
@@ -184,7 +195,7 @@ const AIMode = ({
           ))}
         </div>
 
-        {weatherCondition === 'rain' && (
+        {weatherCondition === "rain" && (
           <div className="rain-container">
             {[...Array(50)].map((_, i) => (
               <div
@@ -193,13 +204,13 @@ const AIMode = ({
                 style={{
                   left: `${Math.random() * 100}%`,
                   animationDelay: `${Math.random() * 2}s`,
-                  animationDuration: `${0.5 + Math.random() * 0.5}s`
+                  animationDuration: `${0.5 + Math.random() * 0.5}s`,
                 }}
               />
             ))}
           </div>
         )}
-        {weatherCondition === 'snow' && (
+        {weatherCondition === "snow" && (
           <div className="snow-container">
             {[...Array(50)].map((_, i) => (
               <div
@@ -209,7 +220,7 @@ const AIMode = ({
                   left: `${Math.random() * 100}%`,
                   animationDelay: `${Math.random() * 5}s`,
                   animationDuration: `${5 + Math.random() * 5}s`,
-                  fontSize: `${10 + Math.random() * 10}px`
+                  fontSize: `${10 + Math.random() * 10}px`,
                 }}
               >
                 ❄
@@ -222,9 +233,9 @@ const AIMode = ({
       {/* Main content */}
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 py-8">
         {/* Current Temperature & HVAC Status (fades out after 5s) */}
-        <div 
+        <div
           className={`text-center mb-4 transition-opacity duration-1000 ${
-            showTempBriefly ? 'opacity-100' : 'opacity-0'
+            showTempBriefly ? "opacity-100" : "opacity-0"
           }`}
         >
           {userSettings.winterThermostat && (
@@ -233,9 +244,9 @@ const AIMode = ({
                 {userSettings.winterThermostat}°F
               </div>
               <div className="text-sm uppercase tracking-wider opacity-70">
-                {hvacMode === 'heating' && '🔥 Heating'}
-                {hvacMode === 'cooling' && '❄️ Cooling'}
-                {hvacMode === 'idle' && '✓ Comfortable'}
+                {hvacMode === "heating" && "🔥 Heating"}
+                {hvacMode === "cooling" && "❄️ Cooling"}
+                {hvacMode === "idle" && "✓ Comfortable"}
               </div>
             </div>
           )}
@@ -244,17 +255,17 @@ const AIMode = ({
         {/* Time and Date */}
         <div className="text-center mb-8 text-white">
           <h1 className="text-6xl sm:text-7xl md:text-8xl font-light mb-2 drop-shadow-lg">
-            {currentTime.toLocaleTimeString('en-US', { 
-              hour: 'numeric', 
-              minute: '2-digit',
-              hour12: true 
+            {currentTime.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
             })}
           </h1>
           <p className="text-xl sm:text-2xl opacity-90 font-light">
-            {currentTime.toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              month: 'long', 
-              day: 'numeric' 
+            {currentTime.toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
             })}
           </p>
         </div>
@@ -263,7 +274,7 @@ const AIMode = ({
         {getQuickStats().length > 0 && (
           <div className="flex flex-wrap justify-center gap-6 mb-12">
             {getQuickStats().map((stat, idx) => (
-              <div 
+              <div
                 key={idx}
                 className="bg-white/10 backdrop-blur-md rounded-2xl px-6 py-4 text-white border border-white/20 hover:bg-white/20 transition-all duration-300"
               >
@@ -291,13 +302,13 @@ const AIMode = ({
               Your AI home energy assistant
             </p>
           </div>
-          
+
           {/* Ask Joule Component - Styled for AI Mode */}
           <div className="ai-mode-ask-joule">
             <AskJoule
               onParsed={(parsed) => {
                 // Handle parsing - but in AI mode, we might want to auto-navigate
-                console.log('AI Mode parsed:', parsed);
+                console.log("AI Mode parsed:", parsed);
               }}
               hasLocation={!!userLocation}
               userSettings={userSettings}
@@ -325,20 +336,20 @@ const AIMode = ({
 
         {/* Quick access to Traditional Mode tools */}
         <div className="mt-12 flex flex-wrap justify-center gap-4 text-white/70 text-sm">
-          <button 
-            onClick={() => onNavigate('/cost-forecaster')}
+          <button
+            onClick={() => onNavigate("/cost-forecaster")}
             className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 backdrop-blur-sm border border-white/20 transition-all"
           >
             Cost Forecaster
           </button>
-          <button 
-            onClick={() => onNavigate('/upgrade-roi')}
+          <button
+            onClick={() => onNavigate("/upgrade-roi")}
             className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 backdrop-blur-sm border border-white/20 transition-all"
           >
             Upgrade ROI
           </button>
-          <button 
-            onClick={() => onNavigate('/thermostat-analyzer')}
+          <button
+            onClick={() => onNavigate("/thermostat-analyzer")}
             className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 backdrop-blur-sm border border-white/20 transition-all"
           >
             Thermostat Analyzer

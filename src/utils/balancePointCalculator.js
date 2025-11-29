@@ -7,14 +7,23 @@ const CONSTANTS = {
   MIN_CAPACITY_FACTOR: 0.65,
 };
 
-export function calculateBalancePoint(userSettings) {
+export function calculateBalancePoint(userSettings = {}) {
+  // Ensure we always have valid defaults - handle null/undefined explicitly
+  let tons = userSettings.tons;
+  if (!tons && userSettings.capacity) {
+    // Convert capacity (kBTU) to tons: 12 kBTU = 1 ton
+    tons = userSettings.capacity / 12.0;
+  }
+  if (!tons || tons <= 0) {
+    tons = 3; // Default to 3 tons if not set
+  }
+  
   const {
     squareFeet = 2000,
     ceilingHeight = 8,
     insulationLevel = 1.0, // multiplier: 0.65 = good, 1.0 = average, 1.4 = poor
     hspf2 = 9,
-    tons = 3,
-    targetIndoorTemp = 68,
+    targetIndoorTemp = userSettings.winterThermostat || 68,
     designOutdoorTemp = 20,
   } = userSettings;
 
@@ -67,6 +76,90 @@ export function calculateBalancePoint(userSettings) {
       balancePoint =
         curr.outdoorTemp + t * (next.outdoorTemp - curr.outdoorTemp);
       break;
+    }
+  }
+  
+  // If no crossover found, check if system is oversized (always positive surplus)
+  // or undersized (always negative surplus)
+  if (balancePoint === null && data.length > 0) {
+    const firstSurplus = data[0].surplus;
+    const lastSurplus = data[data.length - 1].surplus;
+    
+    // If surplus is always positive, system is oversized - balance point is below design temp
+    if (firstSurplus > 0 && lastSurplus > 0) {
+      // Extrapolate below design temp to find where it would cross zero
+      // Use the trend from the last two points
+      if (data.length >= 2) {
+        const last = data[data.length - 1];
+        const secondLast = data[data.length - 2];
+        const surplusSlope = (last.surplus - secondLast.surplus) / (last.outdoorTemp - secondLast.outdoorTemp);
+        if (surplusSlope < 0 && Math.abs(surplusSlope) > 0.001) { // Negative slope means surplus is decreasing
+          balancePoint = last.outdoorTemp - (last.surplus / surplusSlope);
+        } else {
+          // If slope is too small, estimate based on average rate of change
+          const avgSurplusChange = (firstSurplus - lastSurplus) / (data[0].outdoorTemp - last.outdoorTemp);
+          if (avgSurplusChange < 0 && Math.abs(avgSurplusChange) > 0.001) {
+            balancePoint = last.outdoorTemp - (last.surplus / avgSurplusChange);
+          } else {
+            // Very oversized system - balance point is well below design temp
+            balancePoint = designOutdoorTemp - 10; // Estimate 10°F below design
+          }
+        }
+      } else {
+        // Only one data point - estimate based on heat loss vs capacity
+        balancePoint = designOutdoorTemp - 10; // Conservative estimate
+      }
+    }
+    // If surplus is always negative, system is undersized - balance point is above 60°F
+    else if (firstSurplus < 0 && lastSurplus < 0) {
+      // Extrapolate above 60°F to find where it would cross zero
+      if (data.length >= 2) {
+        const first = data[0];
+        const second = data[1];
+        const surplusSlope = (second.surplus - first.surplus) / (second.outdoorTemp - first.outdoorTemp);
+        if (surplusSlope > 0 && Math.abs(surplusSlope) > 0.001) { // Positive slope means surplus is increasing
+          balancePoint = first.outdoorTemp - (first.surplus / surplusSlope);
+        } else {
+          // If slope is too small, estimate based on average rate of change
+          const avgSurplusChange = (lastSurplus - firstSurplus) / (last.outdoorTemp - first.outdoorTemp);
+          if (avgSurplusChange > 0 && Math.abs(avgSurplusChange) > 0.001) {
+            balancePoint = first.outdoorTemp - (first.surplus / avgSurplusChange);
+          } else {
+            // Very undersized system - balance point is well above 60°F
+            balancePoint = 70; // Estimate 70°F (above normal range)
+          }
+        }
+      } else {
+        // Only one data point - estimate based on heat loss vs capacity
+        balancePoint = 70; // Conservative estimate for undersized
+      }
+    }
+    // If surplus changes sign but we didn't catch it in the loop, find the closest crossover
+    else if (firstSurplus * lastSurplus < 0) {
+      // There IS a crossover, but we missed it - find it more carefully
+      for (let i = 0; i < data.length - 1; i++) {
+        const curr = data[i];
+        const next = data[i + 1];
+        if (Math.abs(curr.surplus) < 100 || Math.abs(next.surplus) < 100) {
+          // Very close to zero - use interpolation
+          const t = curr.surplus / (curr.surplus - next.surplus);
+          balancePoint = curr.outdoorTemp + t * (next.outdoorTemp - curr.outdoorTemp);
+          break;
+        }
+      }
+    }
+    
+    // Final fallback: if still null, estimate based on system capacity vs heat loss
+    if (balancePoint === null && data.length > 0) {
+      // Estimate balance point as the temperature where capacity roughly equals heat loss
+      // This is a simplified calculation
+      const avgCapacity = data.reduce((sum, d) => sum + d.thermalOutputBtu, 0) / data.length;
+      const avgHeatLossRate = btuLossPerDegF;
+      // At balance point: capacity = heatLossRate * (targetIndoorTemp - balancePoint)
+      // So: balancePoint = targetIndoorTemp - (capacity / heatLossRate)
+      balancePoint = targetIndoorTemp - (avgCapacity / avgHeatLossRate);
+      // Clamp to reasonable range
+      balancePoint = Math.max(0, Math.min(80, balancePoint));
     }
   }
 

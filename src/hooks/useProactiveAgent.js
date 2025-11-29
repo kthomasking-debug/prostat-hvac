@@ -1,8 +1,11 @@
 // Hook for proactive agent features
 // Runs background monitoring and provides daily briefings
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { checkProactiveAlerts, generateDailyBriefing } from '../lib/groqAgent.js';
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  checkProactiveAlerts,
+  generateDailyBriefing,
+} from "../lib/groqAgent.js";
 
 /**
  * Hook that provides proactive agent features:
@@ -19,7 +22,7 @@ export function useProactiveAgent(thermostatData = null, userSettings = null) {
   // Check for alerts - use refs to avoid dependency issues
   const thermostatDataRef = React.useRef(thermostatData);
   const userSettingsRef = React.useRef(userSettings);
-  
+
   // Update refs when props change
   React.useEffect(() => {
     thermostatDataRef.current = thermostatData;
@@ -29,7 +32,10 @@ export function useProactiveAgent(thermostatData = null, userSettings = null) {
   const checkAlerts = useCallback(async () => {
     setIsChecking(true);
     try {
-      const result = await checkProactiveAlerts(thermostatDataRef.current, userSettingsRef.current);
+      const result = await checkProactiveAlerts(
+        thermostatDataRef.current,
+        userSettingsRef.current
+      );
       if (result.hasAlerts) {
         setAlerts(result.alerts);
       } else {
@@ -37,7 +43,7 @@ export function useProactiveAgent(thermostatData = null, userSettings = null) {
       }
       setLastCheck(new Date().toISOString());
     } catch (error) {
-      console.error('Failed to check proactive alerts:', error);
+      console.error("Failed to check proactive alerts:", error);
     } finally {
       setIsChecking(false);
     }
@@ -52,7 +58,7 @@ export function useProactiveAgent(thermostatData = null, userSettings = null) {
         return result.message;
       }
     } catch (error) {
-      console.error('Failed to generate briefing:', error);
+      console.error("Failed to generate briefing:", error);
     }
     return null;
   }, []);
@@ -61,9 +67,9 @@ export function useProactiveAgent(thermostatData = null, userSettings = null) {
   const shouldShowBriefing = useCallback(() => {
     const now = new Date();
     const hour = now.getHours();
-    const lastBriefingDate = localStorage.getItem('lastBriefingDate');
-    const today = now.toISOString().split('T')[0];
-    
+    const lastBriefingDate = localStorage.getItem("lastBriefingDate");
+    const today = now.toISOString().split("T")[0];
+
     return hour >= 7 && hour < 9 && lastBriefingDate !== today;
   }, []);
 
@@ -73,10 +79,10 @@ export function useProactiveAgent(thermostatData = null, userSettings = null) {
     if (!thermostatData && !userSettings) {
       return; // Skip if no data available
     }
-    
+
     // Initial check
     checkAlerts();
-    
+
     // Then check every hour
     const interval = setInterval(() => {
       checkAlerts();
@@ -89,12 +95,15 @@ export function useProactiveAgent(thermostatData = null, userSettings = null) {
   // Auto-show briefing in the morning
   useEffect(() => {
     if (shouldShowBriefing()) {
-      getBriefing().then(message => {
+      getBriefing().then((message) => {
         if (message) {
           // Store that we showed briefing today
-          localStorage.setItem('lastBriefingDate', new Date().toISOString().split('T')[0]);
+          localStorage.setItem(
+            "lastBriefingDate",
+            new Date().toISOString().split("T")[0]
+          );
           // Could trigger a notification here
-          console.log('Daily briefing:', message);
+          console.log("Daily briefing:", message);
         }
       });
     }
@@ -111,4 +120,3 @@ export function useProactiveAgent(thermostatData = null, userSettings = null) {
     hasAlerts: alerts.length > 0,
   };
 }
-

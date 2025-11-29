@@ -7,16 +7,44 @@
 html,
 body {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow-x: hidden;
 }
 
 body {
   background-color: #f8fafc;
   color: #0f172a;
+  overflow: hidden; /* Prevent scrolling on body - wrapper will handle it */
+  position: relative;
+  /* Constrain body to viewport exactly to prevent extra dark area */
+  height: 100vh;
+  width: 100vw;
 }
 
 html.dark body {
   background-color: #0f172a;
   color: #f1f5f9;
+}
+
+/* Scale wrapper for 80% scaling using transform for better control */
+.app-scale-wrapper {
+  transform: scale(0.8);
+  transform-origin: top left;
+  width: 125vw; /* 100vw / 0.8 = 125vw to account for scale */
+  height: 125vh; /* 100vh / 0.8 = 125vh to account for scale */
+  position: relative;
+  overflow-y: auto; /* Allow scrolling within the scaled wrapper */
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+html.dark body {
+  background-color: #0f172a;
+  color: #f1f5f9;
+  /* Ensure dark background extends properly with zoom */
+  min-height: 100vh;
 }
 
 /* Simple custom components without @apply to avoid build issues */

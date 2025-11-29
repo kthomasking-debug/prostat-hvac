@@ -577,7 +577,7 @@ const ProfessionalMode = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
-      <div className="max-w-sm mx-auto">
+      <div className="max-w-3xl mx-auto">
         <div className="flex justify-between items-center mb-4">
           <Link to="/charging-calculator" className="text-blue-600 dark:text-blue-400">← Back to Calculator</Link>
           <h1 className="text-2xl font-bold">Professional Mode</h1>

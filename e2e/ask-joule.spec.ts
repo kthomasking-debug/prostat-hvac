@@ -467,9 +467,7 @@ test.describe("AskJoule Offline Intelligence", () => {
 
     // Should show offline answer without requiring API key
     await expect(
-      page.getByText(
-        /Last data update|No data updates yet|timestamp not tracked/i
-      )
+      page.getByText(/Last data update|No data updates yet|timestamp not tracked/i)
     ).toBeVisible({ timeout: 10000 });
   });
 
@@ -544,15 +542,11 @@ test.describe("AskJoule Offline Intelligence", () => {
 
     // Should show bridge status
     await expect(
-      page.getByText(
-        /Bridge is (connected|not connected)|status not available/i
-      )
+      page.getByText(/Bridge is (connected|not connected)|status not available/i)
     ).toBeVisible({ timeout: 10000 });
   });
 
-  test("should handle 'open the pod bay doors' easter egg", async ({
-    page,
-  }) => {
+  test("should handle 'open the pod bay doors' easter egg", async ({ page }) => {
     await page.evaluate(() => {
       localStorage.removeItem("groqApiKey");
     });

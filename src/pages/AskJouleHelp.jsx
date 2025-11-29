@@ -260,7 +260,7 @@ const AskJouleHelp = () => {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">3. Upload Thermostat Data (Optional)</h3>
             <ol className="list-decimal list-inside text-sm text-gray-700 dark:text-gray-300 space-y-1 ml-4">
-              <li>Export CSV from your smart thermostat (ecobee, Nest, Honeywell)</li>
+              <li>Export CSV from your Ecobee thermostat (ProStat is purpose-built for Ecobee)</li>
               <li>Go to Performance Analyzer page</li>
               <li>Upload your CSV file</li>
               <li>Ask Joule to "analyze my thermostat data" for insights</li>

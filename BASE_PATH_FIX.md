@@ -3,6 +3,7 @@
 ## Problem Identified
 
 The `vite.config.js` was hardcoded to `base: "/"`, which:
+
 - ✅ Works for Netlify (domain root)
 - ❌ **Breaks GitHub Pages** (subdirectory deployment like `/engineering-tools/`)
 
@@ -30,11 +31,11 @@ Added dedicated build scripts in `package.json`:
 ```json
 {
   "scripts": {
-    "build": "vite build",                                              // Default: base=/
-    "build:gh-pages": "cross-env VITE_BASE_PATH=/engineering-tools/ vite build",  // GitHub Pages
-    "build:netlify": "cross-env VITE_BASE_PATH=/ vite build",           // Netlify
-    "predeploy": "npm run build:gh-pages",                              // Auto-runs before deploy
-    "deploy": "gh-pages -d dist"                                         // GitHub Pages deploy
+    "build": "vite build", // Default: base=/
+    "build:gh-pages": "cross-env VITE_BASE_PATH=/engineering-tools/ vite build", // GitHub Pages
+    "build:netlify": "cross-env VITE_BASE_PATH=/ vite build", // Netlify
+    "predeploy": "npm run build:gh-pages", // Auto-runs before deploy
+    "deploy": "gh-pages -d dist" // GitHub Pages deploy
   }
 }
 ```
@@ -42,6 +43,7 @@ Added dedicated build scripts in `package.json`:
 ### 🔄 Automatic Deployment Configuration
 
 **Netlify (`netlify.toml`):**
+
 ```toml
 [build]
   command = "npm run build:netlify"  # Uses VITE_BASE_PATH=/
@@ -49,6 +51,7 @@ Added dedicated build scripts in `package.json`:
 ```
 
 **GitHub Pages:**
+
 ```bash
 npm run deploy  # Automatically runs build:gh-pages first
 ```
@@ -56,43 +59,55 @@ npm run deploy  # Automatically runs build:gh-pages first
 ## ✅ Verification
 
 ### GitHub Pages Build
+
 ```bash
 npm run build:gh-pages
 ```
+
 **Result:** Assets use `/engineering-tools/` prefix
+
 - `/engineering-tools/assets/index-*.js`
 - `/engineering-tools/vite.svg`
 
 ### Netlify Build
+
 ```bash
 npm run build:netlify
 ```
+
 **Result:** Assets use `/` prefix (root)
+
 - `/assets/index-*.js`
 - `/vite.svg`
 
 ## 🚀 How to Use
 
 ### For GitHub Pages Deployment:
+
 ```bash
 npm run deploy
 ```
+
 - Automatically uses `build:gh-pages`
 - Sets `VITE_BASE_PATH=/engineering-tools/`
 - Deploys to `https://username.github.io/engineering-tools/`
 
 ### For Netlify Deployment:
+
 ```bash
 npm run build:netlify
 # Then drag dist/ to https://app.netlify.com/drop
 ```
+
 - Sets `VITE_BASE_PATH=/`
 - Deploys to `https://your-site.netlify.app/`
 
 ### For Local Development:
+
 ```bash
 npm run dev
 ```
+
 - Uses default `base: "/"`
 - Works at `http://localhost:5173/`
 
@@ -117,9 +132,11 @@ For custom domains or `username.github.io` sites:
 ## 🔍 Technical Details
 
 ### Package Added
+
 - **`cross-env`**: Cross-platform environment variable support (Windows, Mac, Linux)
 
 ### Files Modified
+
 1. ✅ `vite.config.js` - Environment variable support
 2. ✅ `package.json` - Platform-specific build scripts
 3. ✅ `netlify.toml` - Uses `build:netlify` script
@@ -141,4 +158,3 @@ For custom domains or `username.github.io` sites:
 ✅ **No manual config changes** needed between deployments
 
 The app now correctly handles both deployment scenarios without manual configuration changes!
-

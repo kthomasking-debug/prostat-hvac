@@ -12,9 +12,9 @@ The LLM **does NOT run commands by itself**. It generates text (tool calls), and
 
 ### 1. **LLM Receives Prompt**
 
-User says: *"Set the heat pump to 70° but avoid using emergency heat unless necessary."*
+User says: _"Set the heat pump to 70° but avoid using emergency heat unless necessary."_
 
-LLM analyzes and thinks: *"Okay, user wants a 70° setpoint and no strip heat."*
+LLM analyzes and thinks: _"Okay, user wants a 70° setpoint and no strip heat."_
 
 ---
 
@@ -57,13 +57,13 @@ The agent framework (our `agentExecutor.js`) sees:
 // This is REAL code that actually touches the thermostat
 async function set_temperature(args) {
   const { heat_setpoint } = args;
-  
+
   // Call Ecobee API (REAL ACTION)
   const ecobee = await getEcobeeConnector();
   await ecobee.updateSettings({
-    runtime: { desiredHeat: heat_setpoint * 10 }
+    runtime: { desiredHeat: heat_setpoint * 10 },
   });
-  
+
   return { success: true, message: `Temperature set to ${heat_setpoint}°F` };
 }
 ```
@@ -111,6 +111,7 @@ The LLM has **three sources**:
 ### 1. **Internal Training (General Knowledge)**
 
 From its training data:
+
 - What a heat pump is
 - Why aux heat = expensive
 - Why setbacks can trigger strips
@@ -123,6 +124,7 @@ From its training data:
 ### 2. **RAG System (Your Documentation)**
 
 The LLM can fetch via `search_knowledge()`:
+
 - Your HVAC documentation
 - Equipment manuals
 - Ecobee configuration guides
@@ -130,6 +132,7 @@ The LLM can fetch via `search_knowledge()`:
 - Historical performance data
 
 **Example:**
+
 ```javascript
 // LLM suggests:
 {"tool": "search_knowledge", "arguments": {"query": "aux heat threshold"}}
@@ -166,10 +169,15 @@ The LLM can call tools to get **live data**:
 
 ```json
 [
-  {"tool": "read_file", "arguments": {"path": "state/heating_events.json"}},
-  {"tool": "read_file", "arguments": {"path": "state/current_status.json"}},
-  {"tool": "query_database", "arguments": {"sql": "SELECT outdoorTemp FROM temp_history WHERE time = '6AM'"}},
-  {"tool": "read_file", "arguments": {"path": "config/policy.json"}}
+  { "tool": "read_file", "arguments": { "path": "state/heating_events.json" } },
+  { "tool": "read_file", "arguments": { "path": "state/current_status.json" } },
+  {
+    "tool": "query_database",
+    "arguments": {
+      "sql": "SELECT outdoorTemp FROM temp_history WHERE time = '6AM'"
+    }
+  },
+  { "tool": "read_file", "arguments": { "path": "config/policy.json" } }
 ]
 ```
 
@@ -177,11 +185,11 @@ The LLM can call tools to get **live data**:
 
 ```javascript
 // Tool 1: Read heating events
-const events = await readFile('state/heating_events.json');
+const events = await readFile("state/heating_events.json");
 // Returns: { events: [{ type: 'aux_heat_activation', timestamp: '6AM', ... }] }
 
 // Tool 2: Read current state
-const state = await readFile('state/current_status.json');
+const state = await readFile("state/current_status.json");
 // Returns: { thermostat: { indoorTemp: 72, ... } }
 
 // Tool 3: Query database
@@ -189,7 +197,7 @@ const outdoorTemp = await queryDatabase("SELECT...");
 // Returns: { rows: [{ outdoorTemp: 24 }] }
 
 // Tool 4: Read policy
-const policy = await readFile('config/policy.json');
+const policy = await readFile("config/policy.json");
 // Returns: { auxHeat: { allowAuxDuringRecovery: true } }
 ```
 
@@ -209,6 +217,7 @@ const policy = await readFile('config/policy.json');
 **Step 4: LLM Reasons from Data**
 
 LLM combines all the data:
+
 - Outdoor temp was 24°F at 6AM
 - Setpoint jumped from 68°F to 72°F (4°F difference)
 - Policy allows aux during recovery
@@ -223,12 +232,14 @@ LLM combines all the data:
 ## 🎯 Key Points
 
 ### ✅ What LLM Does:
+
 - Generates tool calls (suggestions)
 - Reasons from data
 - Produces natural language responses
 - Understands context
 
 ### ❌ What LLM Does NOT Do:
+
 - Execute commands directly
 - Touch hardware
 - Write files
@@ -236,12 +247,14 @@ LLM combines all the data:
 - Access databases
 
 ### ✅ What Agent Framework Does:
+
 - Validates tool calls
 - Executes real code
 - Handles errors
 - Manages conversation flow
 
 ### ✅ What Tools Do:
+
 - Actually touch the real world
 - Make API calls
 - Read/write files
@@ -268,6 +281,7 @@ See `src/lib/agentExecutor.js` for the complete implementation:
 It's **instructing your agent** to run real commands through controlled interfaces you define.
 
 **Flow:**
+
 1. User asks question
 2. LLM generates tool calls (text/JSON)
 3. Agent framework validates and executes
@@ -276,4 +290,3 @@ It's **instructing your agent** to run real commands through controlled interfac
 6. LLM generates final answer
 
 **This is how agentic systems work.**
-

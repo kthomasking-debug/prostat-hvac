@@ -48,6 +48,7 @@
     "@capacitor/android": "^6.2.1",
     "@capacitor/cli": "^6.2.1",
     "@capacitor/core": "^6.2.1",
+    "@picovoice/porcupine-web": "^3.0.3",
     "@testing-library/dom": "^10.4.1",
     "ai": "^5.0.93",
     "cors": "^2.8.5",
@@ -60,10 +61,15 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-joyride": "^2.9.3",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.9.5",
+    "react-syntax-highlighter": "^16.1.0",
     "recharts": "^3.3.0",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
     "serialport": "^10.5.0",
     "systeminformation": "^5.27.11",
+    "three": "^0.181.2",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -104,7 +110,7 @@
     ]
   },
   "browserslist": [
-    "defaults",
-    "Android >= 9"
+    "android >= 4.4",
+    "chrome >= 30"
   ]
 }

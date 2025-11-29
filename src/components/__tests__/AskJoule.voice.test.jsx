@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { BrowserRouter } from 'react-router-dom';
-import AskJoule from '../AskJoule';
-import { parseAskJoule } from '../../utils/askJouleParser';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { BrowserRouter } from "react-router-dom";
+import AskJoule from "../AskJoule";
+import { parseAskJoule } from "../../utils/askJouleParser";
 
 // Mock useSpeechSynthesis hook
-vi.mock('../../hooks/useSpeechSynthesis', () => ({
+vi.mock("../../hooks/useSpeechSynthesis", () => ({
   useSpeechSynthesis: () => ({
     speak: vi.fn(),
     stop: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('../../hooks/useSpeechSynthesis', () => ({
   }),
 }));
 
-describe('AskJoule - Enhanced Voice Commands', () => {
+describe("AskJoule - Enhanced Voice Commands", () => {
   const mockOnSettingChange = vi.fn();
   const mockUserSettings = {
     winterThermostat: 68,
@@ -30,7 +30,7 @@ describe('AskJoule - Enhanced Voice Commands', () => {
     vi.clearAllMocks();
   });
 
-  describe('Relative temperature adjustments', () => {
+  describe("Relative temperature adjustments", () => {
     it('handles "make it warmer"', async () => {
       const user = userEvent.setup();
       render(
@@ -43,20 +43,20 @@ describe('AskJoule - Enhanced Voice Commands', () => {
         </BrowserRouter>
       );
 
-      const inputs = screen.getAllByLabelText('Ask Joule');
+      const inputs = screen.getAllByLabelText("Ask Joule");
       expect(inputs.length).toBe(1);
       const input = inputs[0];
-      await user.type(input, 'make it warmer');
+      await user.type(input, "make it warmer");
       // Assert input reflected the typed text
-      expect(input).toHaveValue('make it warmer');
+      expect(input).toHaveValue("make it warmer");
       // Verify parser identifies this as increaseTemp command
-      expect(parseAskJoule('make it warmer').action).toBe('increaseTemp');
-      await user.click(screen.getByText('Ask'));
+      expect(parseAskJoule("make it warmer").action).toBe("increaseTemp");
+      await user.click(screen.getByText("Ask"));
 
       expect(mockOnSettingChange).toHaveBeenCalledWith(
-        'winterThermostat',
+        "winterThermostat",
         70, // 68 + 2
-        expect.objectContaining({ source: 'AskJoule' })
+        expect.objectContaining({ source: "AskJoule" })
       );
     });
 
@@ -72,14 +72,14 @@ describe('AskJoule - Enhanced Voice Commands', () => {
         </BrowserRouter>
       );
 
-      const input = screen.getByLabelText('Ask Joule');
-      await user.type(input, 'make it cooler by 3');
-      await user.click(screen.getByText('Ask'));
+      const input = screen.getByLabelText("Ask Joule");
+      await user.type(input, "make it cooler by 3");
+      await user.click(screen.getByText("Ask"));
 
       expect(mockOnSettingChange).toHaveBeenCalledWith(
-        'winterThermostat',
+        "winterThermostat",
         65, // 68 - 3
-        expect.objectContaining({ source: 'AskJoule' })
+        expect.objectContaining({ source: "AskJoule" })
       );
     });
 
@@ -95,19 +95,19 @@ describe('AskJoule - Enhanced Voice Commands', () => {
         </BrowserRouter>
       );
 
-      const input = screen.getByLabelText('Ask Joule');
-      await user.type(input, 'turn up the heat by 5');
-      await user.click(screen.getByText('Ask'));
+      const input = screen.getByLabelText("Ask Joule");
+      await user.type(input, "turn up the heat by 5");
+      await user.click(screen.getByText("Ask"));
 
       expect(mockOnSettingChange).toHaveBeenCalledWith(
-        'winterThermostat',
+        "winterThermostat",
         73, // 68 + 5
-        expect.objectContaining({ source: 'AskJoule' })
+        expect.objectContaining({ source: "AskJoule" })
       );
     });
   });
 
-  describe('Preset modes', () => {
+  describe("Preset modes", () => {
     it('handles "I\'m going to sleep" (sleep mode)', async () => {
       const user = userEvent.setup();
       render(
@@ -120,14 +120,14 @@ describe('AskJoule - Enhanced Voice Commands', () => {
         </BrowserRouter>
       );
 
-      const input = screen.getByLabelText('Ask Joule');
+      const input = screen.getByLabelText("Ask Joule");
       await user.type(input, "I'm going to sleep");
-      await user.click(screen.getByText('Ask'));
+      await user.click(screen.getByText("Ask"));
 
       expect(mockOnSettingChange).toHaveBeenCalledWith(
-        'winterThermostat',
+        "winterThermostat",
         65,
-        expect.objectContaining({ comment: 'Sleep mode preset' })
+        expect.objectContaining({ comment: "Sleep mode preset" })
       );
     });
 
@@ -143,14 +143,14 @@ describe('AskJoule - Enhanced Voice Commands', () => {
         </BrowserRouter>
       );
 
-      const input = screen.getByLabelText('Ask Joule');
+      const input = screen.getByLabelText("Ask Joule");
       await user.type(input, "I'm leaving");
-      await user.click(screen.getByText('Ask'));
+      await user.click(screen.getByText("Ask"));
 
       expect(mockOnSettingChange).toHaveBeenCalledWith(
-        'winterThermostat',
+        "winterThermostat",
         60,
-        expect.objectContaining({ comment: 'Away mode preset' })
+        expect.objectContaining({ comment: "Away mode preset" })
       );
     });
 
@@ -166,19 +166,19 @@ describe('AskJoule - Enhanced Voice Commands', () => {
         </BrowserRouter>
       );
 
-      const input = screen.getByLabelText('Ask Joule');
+      const input = screen.getByLabelText("Ask Joule");
       await user.type(input, "I'm home");
-      await user.click(screen.getByText('Ask'));
+      await user.click(screen.getByText("Ask"));
 
       expect(mockOnSettingChange).toHaveBeenCalledWith(
-        'winterThermostat',
+        "winterThermostat",
         70,
-        expect.objectContaining({ comment: 'Home mode preset' })
+        expect.objectContaining({ comment: "Home mode preset" })
       );
     });
   });
 
-  describe('Temperature queries', () => {
+  describe("Temperature queries", () => {
     it('handles "what\'s the temperature"', async () => {
       const user = userEvent.setup();
       render(
@@ -191,18 +191,18 @@ describe('AskJoule - Enhanced Voice Commands', () => {
         </BrowserRouter>
       );
 
-      const input = screen.getByLabelText('Ask Joule');
+      const input = screen.getByLabelText("Ask Joule");
       await user.type(input, "what's the temperature");
-      await user.click(screen.getByText('Ask'));
+      await user.click(screen.getByText("Ask"));
 
       // Should display current temp without changing settings
       expect(mockOnSettingChange).not.toHaveBeenCalled();
-      const output = await screen.findByTestId('ask-joule-output');
+      const output = await screen.findByTestId("ask-joule-output");
       expect(output.textContent).toMatch(/68/);
     });
   });
 
-  describe('Natural language variations', () => {
+  describe("Natural language variations", () => {
     it('handles "how cold is it"', async () => {
       const user = userEvent.setup();
       render(
@@ -215,12 +215,12 @@ describe('AskJoule - Enhanced Voice Commands', () => {
         </BrowserRouter>
       );
 
-      const input = screen.getByLabelText('Ask Joule');
-      await user.type(input, 'how cold is it');
-      await user.click(screen.getByText('Ask'));
+      const input = screen.getByLabelText("Ask Joule");
+      await user.type(input, "how cold is it");
+      await user.click(screen.getByText("Ask"));
 
       expect(mockOnSettingChange).not.toHaveBeenCalled();
-      const output = await screen.findByTestId('ask-joule-output');
+      const output = await screen.findByTestId("ask-joule-output");
       expect(output.textContent).toMatch(/68/);
     });
 
@@ -236,14 +236,14 @@ describe('AskJoule - Enhanced Voice Commands', () => {
         </BrowserRouter>
       );
 
-      const input = screen.getByLabelText('Ask Joule');
-      await user.type(input, 'sleep mode');
-      await user.click(screen.getByText('Ask'));
+      const input = screen.getByLabelText("Ask Joule");
+      await user.type(input, "sleep mode");
+      await user.click(screen.getByText("Ask"));
 
       expect(mockOnSettingChange).toHaveBeenCalledWith(
-        'winterThermostat',
+        "winterThermostat",
         65,
-        expect.objectContaining({ comment: 'Sleep mode preset' })
+        expect.objectContaining({ comment: "Sleep mode preset" })
       );
     });
   });

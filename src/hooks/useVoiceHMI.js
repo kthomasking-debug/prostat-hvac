@@ -1,7 +1,7 @@
 // src/hooks/useVoiceHMI.js
 // Orchestrates voice interaction state, transcript, insights, and sentiment
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 export default function useVoiceHMI() {
   // Detect test environment
@@ -30,14 +30,37 @@ export default function useVoiceHMI() {
   const silenceStartRef = useRef(null);
 
   // Voice listening duration (seconds, from settings or default 5)
-  let listenSeconds = 5;
-  try {
-    const stored = localStorage.getItem("askJouleListenSeconds");
-    if (stored && !isNaN(Number(stored))) listenSeconds = Number(stored);
-  } catch (err) {
-    // Ignore localStorage errors
-    console.warn("Failed to read listen seconds setting:", err);
-  }
+  // Make it reactive to changes in localStorage
+  const [listenSeconds, setListenSeconds] = useState(() => {
+    try {
+      const stored = localStorage.getItem("askJouleListenSeconds");
+      if (stored && !isNaN(Number(stored))) return Number(stored);
+    } catch {}
+    return 5;
+  });
+
+  // Listen for changes to askJouleListenSeconds setting
+  useEffect(() => {
+    const handleSettingChange = () => {
+      try {
+        const stored = localStorage.getItem("askJouleListenSeconds");
+        if (stored && !isNaN(Number(stored))) {
+          setListenSeconds(Number(stored));
+        }
+      } catch {}
+    };
+    window.addEventListener("askJouleListenSecondsChanged", handleSettingChange);
+    // Also listen to storage events (for cross-tab sync)
+    window.addEventListener("storage", (e) => {
+      if (e.key === "askJouleListenSeconds") {
+        handleSettingChange();
+      }
+    });
+    return () => {
+      window.removeEventListener("askJouleListenSecondsChanged", handleSettingChange);
+      window.removeEventListener("storage", handleSettingChange);
+    };
+  }, []);
 
   const startListening = useCallback(() => {
     // Skip in test environment

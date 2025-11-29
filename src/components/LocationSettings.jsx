@@ -47,15 +47,25 @@ export default function LocationSettings() {
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-900 space-y-3" data-testid="location-settings">
-      <h3 className="text-sm font-semibold">Location</h3>
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Location</h3>
       <div className="flex flex-col gap-2 text-xs">
         <label className="flex flex-col">
-          <span className="mb-1">Latitude</span>
-          <input value={lat} onChange={e => setLat(e.target.value)} className="border rounded px-2 py-1 bg-gray-50 dark:bg-gray-800" placeholder="e.g. 39.7392" />
+          <span className="mb-1 text-gray-700 dark:text-gray-200">Latitude</span>
+          <input 
+            value={lat} 
+            onChange={e => setLat(e.target.value)} 
+            className="border rounded px-2 py-1 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 placeholder:text-gray-400 dark:placeholder:text-gray-500" 
+            placeholder="e.g. 39.7392" 
+          />
         </label>
         <label className="flex flex-col">
-          <span className="mb-1">Longitude</span>
-          <input value={lon} onChange={e => setLon(e.target.value)} className="border rounded px-2 py-1 bg-gray-50 dark:bg-gray-800" placeholder="e.g. -104.9903" />
+          <span className="mb-1 text-gray-700 dark:text-gray-200">Longitude</span>
+          <input 
+            value={lon} 
+            onChange={e => setLon(e.target.value)} 
+            className="border rounded px-2 py-1 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 placeholder:text-gray-400 dark:placeholder:text-gray-500" 
+            placeholder="e.g. -104.9903" 
+          />
         </label>
       </div>
       <div className="flex gap-2 flex-wrap">

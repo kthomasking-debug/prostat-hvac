@@ -1,4 +1,4 @@
-module.exports = {
+ to module.exports = {
   root: true,
   env: { browser: true, es2020: true, node: true },
   extends: [
@@ -17,16 +17,16 @@ module.exports = {
       'warn',
       { allowConstantExport: true },
     ],
-    // Allow unused vars that start with underscore or are ALL CAPS
+    // Allow unused vars that are a single underscore or ALL CAPS constants
     // varsIgnorePattern matches:
     // - Underscore alone: _
-    // - Underscore-prefixed: _unused, _myVar, _temp, etc.
-    // - All caps/underscores: API_KEY, CONSTANT, etc.
+    // - All caps/underscores: API_KEY, CONSTANT, MY_CONST, etc.
+    // Note: Does NOT match underscore-prefixed variables like _foo or _myVar
     'no-unused-vars': [
       'error',
       {
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^(_[a-zA-Z0-9]*|[A-Z_]+)$',
+        varsIgnorePattern: '^(_|[A-Z_]+)$',
         caughtErrorsIgnorePattern: '^_'
       }
     ],

@@ -1,18 +1,36 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "../../hooks/useSpeechSynthesis";
+import { useWakeWord } from "../../hooks/useWakeWord";
+import { parseThermostatCommand } from "../../utils/nlp/commandParser";
+import { executeCommand } from "../../utils/nlp/commandExecutor";
 import { parseAskJoule } from "../../utils/askJouleParser";
 import { answerWithAgent } from "../../lib/groqAgent";
 import { hasSalesIntent, EBAY_STORE_URL } from "../../utils/rag/salesFAQ";
+import { ROUTES } from "../../utils/routes";
 import {
   calculateHeatLoss,
   formatHeatLossResponse,
 } from "../../utils/calculatorEngines";
-import { calculateBalancePoint } from "../../utils/balancePointCalculator";
+import {
+  handleSettingCommand,
+  handlePresetCommand,
+  handleTempAdjustment,
+  handleNavigationCommand,
+  handleEducationalCommand,
+  handleHelpCommand,
+  handleDarkModeCommand,
+  handleThermostatSettingCommand,
+  handleDiagnosticCommand,
+  handleAdvancedSettingsCommand,
+  SETTING_COMMANDS,
+} from "../../utils/askJouleCommandHandlers";
 
 export function useAskJoule({
   onParsed,
+  hasLocation,
+  disabled,
   tts: ttsProp,
   groqKey: groqKeyProp,
   userSettings = {},
@@ -21,6 +39,8 @@ export function useAskJoule({
   recommendations = [],
   onNavigate = null,
   onSettingChange = null,
+  auditLog = [],
+  onUndo = null,
   salesMode = false,
 }) {
   const navigate = useNavigate();
@@ -52,6 +72,7 @@ export function useAskJoule({
     }
   });
   const [lastQuery, setLastQuery] = useState(null);
+  const [historyIndex, setHistoryIndex] = useState(-1);
 
   // Refs
   const inputRef = useRef(null);
@@ -111,10 +132,24 @@ export function useAskJoule({
   // Wake word detection - DEMO MODE ONLY (Browser-based)
   // TODO: Replace with Pi-based WebSocket listener when hardware arrives
   // See docs/WAKE-WORD-ARCHITECTURE.md for production plan
-  // Note: useWakeWord hook is not yet implemented
-  const wakeWordSupported = false;
-  const isWakeWordListening = false;
-  const wakeWordError = null;
+  const {
+    supported: wakeWordSupported,
+    isListening: isWakeWordListening,
+    error: wakeWordError,
+  } = useWakeWord({
+    onWake: () => {
+      console.log(
+        "[AskJoule] Wake word detected (DEMO MODE), starting listening..."
+      );
+      if (!isListening && recognitionSupported) {
+        startListening();
+        // Optional: Play a subtle sound or show visual feedback
+        speak?.("Listening...");
+      }
+    },
+    enabled: wakeWordEnabled && recognitionSupported,
+    wakeWord: "hey joule", // Note: Actually uses "Hey Pico" (Porcupine built-in)
+  });
 
   // Update input live while listening
   useEffect(() => {
@@ -179,7 +214,6 @@ export function useAskJoule({
 
     const shouldShow = filtered.length > 0 && value.length > 2;
     if (shouldShow !== showSuggestions) setShowSuggestions(shouldShow);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, contextualSuggestions]);
 
   const placeholder = useMemo(() => {
@@ -209,188 +243,117 @@ export function useAskJoule({
   const handleOfflineAnswer = (parsed, callbacks) => {
     const { setOutput, speak } = callbacks;
     const { type, answer, check, needsContext } = parsed;
-
+    
     // Direct answers (knowledge base, calculator, easter egg)
     if (answer) {
       setOutput({ message: answer, status: "info" });
       if (speak) speak(answer);
       return true;
     }
-
+    
     // Context-dependent answers (need data from context)
     if (needsContext) {
       if (type === "temperature") {
         // Try to get from context or localStorage
         try {
-          const tempData = JSON.parse(
-            localStorage.getItem("ecobeeData") || "null"
-          );
-          const temp =
-            tempData?.temperature || tempData?.runtime?.actualTemperature / 10;
+          const tempData = JSON.parse(localStorage.getItem("ecobeeData") || "null");
+          const temp = tempData?.temperature || tempData?.runtime?.actualTemperature / 10;
           if (temp) {
-            setOutput({
-              message: `Current temperature: ${temp.toFixed(1)}°F`,
-              status: "info",
-            });
+            setOutput({ message: `Current temperature: ${temp.toFixed(1)}°F`, status: "info" });
             if (speak) speak(`The temperature is ${Math.round(temp)} degrees`);
             return true;
           }
-        } catch (err) {
-          console.warn("Temperature data error:", err);
-        }
-        setOutput({
-          message:
-            "Temperature data not available. Connect your Ecobee thermostat to see real-time temperature.",
-          status: "info",
-        });
+        } catch {}
+        setOutput({ message: "Temperature data not available. Connect your Ecobee thermostat to see real-time temperature.", status: "info" });
         return true;
       }
-
+      
       if (type === "humidity") {
         try {
-          const tempData = JSON.parse(
-            localStorage.getItem("ecobeeData") || "null"
-          );
-          const humidity =
-            tempData?.humidity || tempData?.runtime?.actualHumidity;
+          const tempData = JSON.parse(localStorage.getItem("ecobeeData") || "null");
+          const humidity = tempData?.humidity || tempData?.runtime?.actualHumidity;
           if (humidity !== undefined) {
-            setOutput({
-              message: `Current humidity: ${humidity}%`,
-              status: "info",
-            });
+            setOutput({ message: `Current humidity: ${humidity}%`, status: "info" });
             if (speak) speak(`Humidity is ${humidity} percent`);
             return true;
           }
-        } catch (err) {
-          console.warn("Humidity data error:", err);
-        }
-        setOutput({
-          message:
-            "Humidity data not available. Connect your Ecobee thermostat to see real-time humidity.",
-          status: "info",
-        });
+        } catch {}
+        setOutput({ message: "Humidity data not available. Connect your Ecobee thermostat to see real-time humidity.", status: "info" });
         return true;
       }
-
+      
       if (type === "hvacStatus") {
         try {
-          const tempData = JSON.parse(
-            localStorage.getItem("ecobeeData") || "null"
-          );
+          const tempData = JSON.parse(localStorage.getItem("ecobeeData") || "null");
           const mode = tempData?.hvacMode || tempData?.settings?.hvacMode;
           const isRunning = tempData?.equipmentStatus || "";
           if (mode) {
-            const status = isRunning
-              ? `HVAC is running in ${mode} mode`
-              : `HVAC is in ${mode} mode (not currently running)`;
+            const status = isRunning ? `HVAC is running in ${mode} mode` : `HVAC is in ${mode} mode (not currently running)`;
             setOutput({ message: status, status: "info" });
             if (speak) speak(status);
             return true;
           }
-        } catch (err) {
-          console.warn("HVAC status error:", err);
-        }
-        setOutput({
-          message:
-            "HVAC status not available. Connect your Ecobee thermostat to see real-time status.",
-          status: "info",
-        });
+        } catch {}
+        setOutput({ message: "HVAC status not available. Connect your Ecobee thermostat to see real-time status.", status: "info" });
         return true;
       }
-
+      
       if (type === "balancePoint") {
         // Calculate from user settings
         try {
+          const { calculateBalancePoint } = require("../../utils/balancePointCalculator");
           const result = calculateBalancePoint(userSettings);
           if (result && result.balancePoint !== null) {
-            setOutput({
-              message: `Your balance point is ${result.balancePoint.toFixed(
-                1
-              )}°F. This is the outdoor temperature where your heat pump output equals your building's heat loss.`,
-              status: "info",
-            });
-            if (speak)
-              speak(
-                `Balance point is ${Math.round(result.balancePoint)} degrees`
-              );
+            setOutput({ message: `Your balance point is ${result.balancePoint.toFixed(1)}°F. This is the outdoor temperature where your heat pump output equals your building's heat loss.`, status: "info" });
+            if (speak) speak(`Balance point is ${Math.round(result.balancePoint)} degrees`);
             return true;
           }
         } catch (err) {
           console.warn("Balance point calculation failed:", err);
         }
-        setOutput({
-          message:
-            "Balance point calculation requires system settings. Please configure your heat pump capacity and home details in Settings.",
-          status: "info",
-        });
+        setOutput({ message: "Balance point calculation requires system settings. Please configure your heat pump capacity and home details in Settings.", status: "info" });
         return true;
       }
-
+      
       if (type === "yesterdayCost") {
-        setOutput({
-          message:
-            "Yesterday's cost calculation requires thermostat runtime data. Upload CSV data in Performance Analyzer to see daily costs.",
-          status: "info",
-        });
+        setOutput({ message: "Yesterday's cost calculation requires thermostat runtime data. Upload CSV data in Performance Analyzer to see daily costs.", status: "info" });
         return true;
       }
     }
-
+    
     // System status checks
     if (check === "firmware") {
-      setOutput({
-        message:
-          "Firmware check not yet implemented. This will check your local version against GitHub latest.",
-        status: "info",
-      });
+      setOutput({ message: "Firmware check not yet implemented. This will check your local version against GitHub latest.", status: "info" });
       return true;
     }
-
+    
     if (check === "bridge") {
       // Check if bridge is connected via localStorage or context
       try {
-        const bridgeStatus =
-          localStorage.getItem("prostatBridgeConnected") === "true";
-        const status = bridgeStatus
-          ? "Bridge is connected"
-          : "Bridge is not connected";
-        setOutput({
-          message: status,
-          status: bridgeStatus ? "success" : "info",
-        });
+        const bridgeStatus = localStorage.getItem("prostatBridgeConnected") === "true";
+        const status = bridgeStatus ? "Bridge is connected" : "Bridge is not connected";
+        setOutput({ message: status, status: bridgeStatus ? "success" : "info" });
         if (speak) speak(status);
         return true;
-      } catch (err) {
-        console.warn("Bridge status error:", err);
-      }
-      setOutput({
-        message: "Bridge connection status not available.",
-        status: "info",
-      });
+      } catch {}
+      setOutput({ message: "Bridge connection status not available.", status: "info" });
       return true;
     }
-
+    
     if (check === "lastUpdate") {
       try {
         // Check multiple possible localStorage keys for last update timestamp
-        const timestamp =
-          localStorage.getItem("ecobeeLastUpdate") ||
-          localStorage.getItem("lastDataUpdate") ||
-          localStorage.getItem("prostatBridgeLastUpdate") ||
-          localStorage.getItem("temperatureLastUpdate");
+        const timestamp = localStorage.getItem("ecobeeLastUpdate") || 
+                         localStorage.getItem("lastDataUpdate") ||
+                         localStorage.getItem("prostatBridgeLastUpdate") ||
+                         localStorage.getItem("temperatureLastUpdate");
         if (timestamp) {
           const date = new Date(timestamp);
           const timeAgo = Math.round((Date.now() - date.getTime()) / 1000 / 60); // minutes ago
-          const timeAgoText =
-            timeAgo < 1
-              ? "just now"
-              : timeAgo === 1
-              ? "1 minute ago"
-              : `${timeAgo} minutes ago`;
-          setOutput({
-            message: `Last data update: ${date.toLocaleString()} (${timeAgoText})`,
-            status: "info",
-          });
+          const timeAgoText = timeAgo < 1 ? "just now" : 
+                             timeAgo === 1 ? "1 minute ago" : 
+                             `${timeAgo} minutes ago`;
+          setOutput({ message: `Last data update: ${date.toLocaleString()} (${timeAgoText})`, status: "info" });
           if (speak) speak(`Last update was ${timeAgoText}`);
           return true;
         }
@@ -398,27 +361,18 @@ export function useAskJoule({
         console.warn("Error reading last update timestamp:", err);
       }
       // Check if we're in demo mode or if there's any data at all
-      const hasAnyData =
-        localStorage.getItem("ecobeeData") ||
-        localStorage.getItem("prostatBridgeData") ||
-        localStorage.getItem("temperatureData");
-
+      const hasAnyData = localStorage.getItem("ecobeeData") || 
+                        localStorage.getItem("prostatBridgeData") ||
+                        localStorage.getItem("temperatureData");
+      
       if (hasAnyData) {
-        setOutput({
-          message:
-            "Last update timestamp not tracked. Data is available but the update time wasn't recorded. This is normal in demo mode or when using manual data entry.",
-          status: "info",
-        });
+        setOutput({ message: "Last update timestamp not tracked. Data is available but the update time wasn't recorded. This is normal in demo mode or when using manual data entry.", status: "info" });
       } else {
-        setOutput({
-          message:
-            "No data updates yet. In production, ProStat tracks when your Ecobee thermostat or ProStat Bridge last sent data. Connect your thermostat to see real-time update timestamps.",
-          status: "info",
-        });
+        setOutput({ message: "No data updates yet. In production, ProStat tracks when your Ecobee thermostat or ProStat Bridge last sent data. Connect your thermostat to see real-time update timestamps.", status: "info" });
       }
       return true;
     }
-
+    
     return false;
   };
 
@@ -436,8 +390,48 @@ export function useAskJoule({
       return handleOfflineAnswer(parsed, callbacks);
     }
 
-    // Command handlers are implemented inline below
-    // Note: askJouleCommandHandlers module is not yet available
+    // 1. Setting Commands
+    if (SETTING_COMMANDS[parsed.action]) {
+      const res = handleSettingCommand(parsed, callbacks);
+      if (res?.handled) return true;
+    }
+
+    // 2. Presets
+    if (["sleep", "away", "home"].includes(parsed.action)) {
+      const res = handlePresetCommand(parsed.action, callbacks);
+      if (res?.handled) return true;
+    }
+
+    // 3. Temp Adjustment
+    if (parsed.action === "increaseTemp" || parsed.action === "decreaseTemp") {
+      const direction = parsed.action === "increaseTemp" ? "up" : "down";
+      const currentWinter = userSettings.winterThermostat || 68;
+      const res = handleTempAdjustment(
+        direction,
+        parsed.value,
+        currentWinter,
+        callbacks
+      );
+      if (res?.handled) return true;
+    }
+
+    // 4. Navigation
+    if (parsed.action === "navigate") {
+      const res = handleNavigationCommand(parsed, callbacks);
+      if (res?.handled) return true;
+    }
+
+    // 5. Educational
+    if (parsed.action === "explain") {
+      const res = handleEducationalCommand(parsed.target, callbacks);
+      if (res?.handled) return true;
+    }
+
+    // 6. Help & Dark Mode
+    if (parsed.action === "help") return handleHelpCommand(callbacks).handled;
+    if (parsed.action === "setDarkMode" || parsed.action === "toggleDarkMode") {
+      return handleDarkModeCommand(parsed, callbacks).handled;
+    }
 
     // 6.5 Byzantine Mode Easter Egg 🕯️
     if (parsed.action === "setByzantineMode") {
@@ -471,7 +465,16 @@ Amen.`);
       return true;
     }
 
-    // Advanced command handlers are implemented inline below
+    // 7. Advanced Settings (Groq API key, model, voice duration)
+    const advRes = handleAdvancedSettingsCommand(parsed, callbacks);
+    if (advRes.handled) return true;
+
+    // 8. Diagnostics & Thermostat Specifics
+    const diagRes = handleDiagnosticCommand(parsed, callbacks);
+    if (diagRes.handled) return true;
+
+    const thermRes = handleThermostatSettingCommand(parsed, callbacks);
+    if (thermRes.handled) return true;
 
     // 9. Analysis / What-If (Logic kept here for now as it needs specific context)
     switch (parsed.action) {
@@ -636,6 +639,7 @@ Amen.`);
     const newHistory = [input, ...commandHistory].slice(0, 50);
     setCommandHistory(newHistory);
     localStorage.setItem("askJouleHistory", JSON.stringify(newHistory));
+    setHistoryIndex(-1);
 
     // Clear previous state
     setAnswer("");
@@ -651,12 +655,7 @@ Amen.`);
       // 1. Try local regex command parsing first
       const parsed = parseAskJoule(input);
       if (import.meta.env.DEV) {
-        console.log("[AskJoule] Parsed query:", {
-          input,
-          parsed,
-          isCommand: parsed.isCommand,
-          action: parsed.action,
-        });
+        console.log("[AskJoule] Parsed query:", { input, parsed, isCommand: parsed.isCommand, action: parsed.action });
       }
 
       // Check for sales queries (Presales RAG capability)

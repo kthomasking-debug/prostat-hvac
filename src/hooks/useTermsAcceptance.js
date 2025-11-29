@@ -9,10 +9,36 @@ const TERMS_VERSION = '1.0'; // Update this when you change the terms
  * @returns {Object} { termsAccepted, markTermsAccepted, resetTermsAcceptance }
  */
 export const useTermsAcceptance = () => {
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
+  // Initialize synchronously from localStorage to avoid blocking render
+  const [termsAccepted, setTermsAccepted] = useState(() => {
+    try {
+      const storedAcceptance = localStorage.getItem(TERMS_ACCEPTANCE_KEY);
+      const storedVersion = localStorage.getItem(`${TERMS_ACCEPTANCE_KEY}_version`);
+      
+      // If terms version changed, reset acceptance
+      if (storedVersion !== TERMS_VERSION) {
+        localStorage.removeItem(TERMS_ACCEPTANCE_KEY);
+        localStorage.setItem(`${TERMS_ACCEPTANCE_KEY}_version`, TERMS_VERSION);
+        return false;
+      }
+      
+      return storedAcceptance === 'true';
+    } catch {
+      return false;
+    }
+  });
+  
+  const [isLoaded, setIsLoaded] = useState(() => {
+    // Start as loaded if we can read localStorage (for tests)
+    try {
+      localStorage.getItem(TERMS_ACCEPTANCE_KEY);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
-  // Load acceptance status from localStorage on mount
+  // Sync with localStorage changes (for cross-tab updates)
   useEffect(() => {
     const storedAcceptance = localStorage.getItem(TERMS_ACCEPTANCE_KEY);
     const storedVersion = localStorage.getItem(`${TERMS_ACCEPTANCE_KEY}_version`);

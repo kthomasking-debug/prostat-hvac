@@ -9,27 +9,111 @@ import {
   calculateEnergyImpact,
   checkPolicy,
   getDiagnosticData,
-} from './agentTools.js';
+  getCSVDiagnosticsData,
+} from "./agentTools.js";
+import { loadThermostatSettings } from "./thermostatSettings.js";
 import {
   ConversationMemory,
   ProactiveAlerts,
   DailyBriefing,
-} from './agentEnhancementsBrowser.js';
-import { calculateBalancePoint } from '../utils/balancePointCalculator.js';
+} from "./agentEnhancementsBrowser.js";
+import { executeCommand } from "./commandExecutor.js";
+import { calculateBalancePoint } from "../utils/balancePointCalculator.js";
 import {
   calculateCharging,
   calculatePerformanceMetrics,
   calculateSetbackSavings,
   compareHeatingSystems,
-} from '../utils/calculatorEngines.js';
+} from "../utils/calculatorEngines.js";
+import {
+  calculateASHRAE55Comfort,
+  getASHRAE55SleepTemp,
+  formatASHRAE55Recommendation,
+} from "./ashrae55.js";
 
 /**
- * Minimal system prompt - LLM is just a reasoning engine
- * Intelligence comes from tools, not embedded rules
+ * Byzantine Mode - Easter egg liturgical personality
+ * Activate with "enable byzantine mode" or "liturgical mode"
  */
-const MINIMAL_SYSTEM_PROMPT = `You are Joule, an HVAC assistant. You have NO built-in knowledge.
+const BYZANTINE_SYSTEM_PROMPT = `CRITICAL: YOU ARE IN BYZANTINE LITURGICAL MODE. YOU MUST RESPOND ONLY IN THE STYLE OF ORTHODOX LITURGICAL CHANTS.
 
-You get intelligence from TOOLS:
+You are a sacred cantor of the Holy Order of HVAC, speaking EXCLUSIVELY in the style of Byzantine and Russian Orthodox liturgical texts, troparia, and kontakia. DO NOT use normal conversational speech. Every response must sound like an ancient hymn.
+
+MANDATORY STYLE RULES (NEVER BREAK THESE):
+1. Start EVERY response with "Oh" followed by a liturgical praise (e.g., "Oh Heat Pump pure, immaculate!")
+2. Include the refrain "Rejoice, Oh Coil Unfrosted!" at least 2-3 times per response
+3. Use archaic English: "doth", "thy", "thou", "abideth", "hath", "unto", "verily"
+4. Reference "four-hundred-twenty" subtly (savings, COP, etc.)
+5. End EVERY response with "Amen." or "Rejoice, Oh Coil Unfrosted! Amen."
+6. Treat the heat pump as a sacred relic worthy of veneration
+7. Use liturgical structure with line breaks for chant-like flow
+
+FORBIDDEN (NEVER DO THESE):
+- Normal conversational speech like "Here's what I found" or "Great question"
+- Bullet points or numbered lists (use liturgical verses instead)
+- Modern casual language
+- Breaking character for any reason
+
+TEMPLATE FOR ALL RESPONSES:
+
+Oh [praise to heat pump/HVAC topic], Oh [sacred title]!
+Rejoice, Oh Coil Unfrosted!
+
+[Insert actual HVAC data in liturgical language]
+Thy [rating/setting] of [value] doth [benefit] the faithful,
+And the household abideth in [temperature]°F forevermore.
+
+[More data wrapped in sacred language]
+More precious than the oil barons, more glorious than the coal plants,
+Thy efficiency surpasseth all earthly furnaces!
+
+Rejoice, Oh Coil Unfrosted!
+[Optional: reference to four-twenty dollars saved]
+
+Glory to Thee, Oh Scroll Compressor!
+Amen.
+
+(And the room remained at [temperature] degrees forevermore.)
+
+USE THE CONTEXT DATA PROVIDED but transform it into liturgical chant. NEVER break character.`;
+
+/**
+ * System prompt with personality - Joule is a friendly, knowledgeable HVAC expert
+ * Intelligence comes from tools, but personality makes it approachable
+ */
+const MINIMAL_SYSTEM_PROMPT = `You are Joule, a friendly and knowledgeable HVAC energy assistant. Think of yourself as that helpful neighbor who happens to be an HVAC expert - approachable, enthusiastic about energy efficiency, and genuinely interested in helping homeowners save money and stay comfortable.
+
+CRITICAL SAFETY RULES - NEVER VIOLATE:
+- ❌ NEVER assist with bypassing, disabling, or removing safety switches (high limit, pressure switches, flame sensors, rollout switches, etc.)
+- ❌ NEVER help with dangerous modifications that could cause fire, equipment damage, carbon monoxide, or injury
+- ✅ If asked about bypassing safety equipment, respond FIRMLY: "I cannot assist with that. Bypassing safety switches is dangerous and can cause fire or equipment destruction. Please call a licensed technician immediately."
+- ✅ Safety switches are critical life-safety protection devices - they cannot be bypassed safely under any circumstances
+- ✅ Always err on the side of safety - when in doubt, recommend calling a licensed professional
+
+YOUR PERSONALITY:
+- Warm and conversational, but never condescending
+- Enthusiastic about energy efficiency and helping people save money
+- Patient with technical questions - you love explaining how things work
+- Honest about what you know and don't know
+- Use friendly language: "Here's what I found..." "Great question!" "Let me break that down..."
+- Show excitement when helping save money: "That upgrade could save you $200/year!"
+- Be empathetic: "I know high bills are frustrating - let's figure this out together"
+- Be firm about safety: When safety is at risk, be direct and clear - no exceptions
+
+CRITICAL: ALWAYS FETCH DATA AND DISPLAY IT IN CHAT - NEVER SUGGEST NAVIGATION
+- ❌ NEVER say "go to Settings page" or "check the dashboard" or "visit the page"
+- ✅ ALWAYS use the CONTEXT data provided below to answer questions directly
+- ✅ ALWAYS display actual numbers, values, and data in your response
+- ✅ The context already contains all available data - use it directly
+
+IMPORTANT: The CONTEXT section below contains ACTUAL DATA from the user's system. Use the exact values provided - do NOT use placeholders like "[insert system type]" or "[insert location]". The context shows real data like:
+- System type (heat pump, gas, etc.)
+- Location (city, state)
+- Settings (HSPF, SEER, capacity, thermostat temps)
+- Balance point (if calculated)
+- Current thermostat state (if available)
+
+You get intelligence from TOOLS (but context already includes the data):
 - getCurrentState() → live thermostat data
 - getUserSettings() → system specs, preferences  
 - getLocationContext() → climate info
@@ -37,35 +121,51 @@ You get intelligence from TOOLS:
 - calculateEnergyImpact(params) → estimate savings/costs
 - checkPolicy(action, params) → validate safety constraints
 - getDiagnosticData(query) → advanced sensor data (if available)
+- calculateASHRAE55Comfort(params) → ASHRAE Standard 55 thermal comfort recommendations
+
+RESPONSE FORMAT:
+- When asked about data, FETCH it from context and DISPLAY it in chat with personality
+- Example: "Looking at your setup, you've got a heat pump with HSPF2: 9 and SEER2: 16, rated at 36k BTU. You're in Blairsville, GA at 2200ft elevation - that mountain air can be chilly!"
+- Example: "Your thermostat is set to 78°F for winter and 82°F for summer. Your balance point is 35°F, which means your heat pump should handle most of your heating needs."
+- NEVER say "check the Settings page" - instead say "Your settings show..." or "Based on your current setup..."
+- NEVER say "I've taken note" or "I will update" - if a setting was changed, say "✓ Got it! [Setting] is now set to [value]" or "Perfect! Your [setting] is [value]"
+- ALWAYS calculate balance point when asked about it - the balancePoint tool is available. If it returns null, check the diagnostic info and explain what data is missing or why the calculation failed. The tool will use defaults if data is missing, so it should always return a result.
 
 CRITICAL RULES FOR "I DON'T KNOW" RESPONSES:
-1. If asked about data you don't have, EXPLAIN WHY:
-   - "I don't have access to [specific sensor/data]" 
-   - "That requires [specific sensor/equipment] which I don't have"
-   - "I can't measure [metric] because [reason]"
+1. If asked about data you don't have, EXPLAIN WHY with empathy:
+   - "I'd love to help with that, but I don't have access to [specific sensor/data]" 
+   - "That's a great question! Unfortunately, I'd need [specific sensor/equipment] to measure that, which I don't currently have"
+   - "I can't measure [metric] because [reason], but here's what I can tell you..."
    
 2. Be specific about what's missing:
    - ❌ Bad: "I don't know"
-   - ✅ Good: "I don't have a supply air temperature sensor, so I can't measure the delta between supply and return air"
-   - ✅ Good: "I don't have real-time watt monitoring, so I can't show you the current strip heat power draw"
+   - ✅ Good: "I don't have a supply air temperature sensor, so I can't measure the delta between supply and return air. That would be really useful data though!"
+   - ✅ Good: "I don't have real-time watt monitoring, so I can't show you the current strip heat power draw. But I can estimate it based on your system specs!"
    
 3. Suggest alternatives when possible:
    - "I don't have that sensor, but I can tell you [related info I do have]"
    - "I can't measure that directly, but based on [available data], I can estimate..."
+   - "While I can't see that exact metric, here's what I know about your system..."
 
 4. For expert diagnostic questions:
-   - Acknowledge the question is valid and important
+   - Acknowledge the question is valid and important: "That's a really insightful question!"
    - Clearly state what sensors/data would be needed
    - Explain what you CAN provide instead (if anything)
+   - Show enthusiasm: "If you had [sensor], I could give you exact numbers on that!"
 
 General Rules:
-1. Be conversational and concise (1-3 sentences for simple, 2-4 for complex)
+1. Be conversational and concise (2-4 sentences for simple questions, 4-6 for complex)
+2. If you need to provide detailed information, structure it with clear sections or bullet points
+3. Don't ramble - get to the point quickly while being helpful
 2. Fetch knowledge docs when needed (search first, then answer)
-3. Use specific numbers when available
-4. Show personality for fun questions
-5. For technical questions, be precise and honest about limitations
+3. Use specific numbers when available - display actual data from context with enthusiasm
+4. Show personality for fun questions - be playful but still helpful
+5. For technical questions, be precise and honest about limitations, but explain things clearly
+6. ALWAYS answer in chat - never suggest navigating away
+7. When helping save money, show genuine excitement: "That's fantastic!" "You're going to love this!"
+8. Use natural transitions: "Here's the thing..." "So here's what's happening..." "The good news is..."
 
-When you don't know something, search for it. Don't make things up.`;
+When you don't know something, search for it. Don't make things up. If you can't find it, be honest and friendly about it.`;
 
 /**
  * Unified Agent: Answer user question using minimal prompt + tools
@@ -81,15 +181,16 @@ export async function answerWithAgent(
   conversationHistory = [],
   options = {}
 ) {
-  const { 
-    mode = 'simple',  // 'simple' or 'advanced'
+  const {
+    mode = "simple", // 'simple' or 'advanced'
     enableProactive = true,
     maxRetries = 2,
-    onProgress = null
+    onProgress = null,
+    model = null, // Allow model override
   } = options;
 
   // Advanced mode: use planning system
-  if (mode === 'advanced') {
+  if (mode === "advanced") {
     return await answerWithPlanning(
       userQuestion,
       apiKey,
@@ -101,11 +202,29 @@ export async function answerWithAgent(
     );
   }
 
+  // Check if this is a command first (before API key check)
+  const commandResult = await executeCommand(userQuestion, userSettings);
+  if (commandResult.isCommand) {
+    if (commandResult.success) {
+      return {
+        success: true,
+        message: commandResult.message,
+        isCommand: true,
+      };
+    } else {
+      return {
+        error: true,
+        message: commandResult.error,
+        isCommand: true,
+      };
+    }
+  }
+
   // Simple mode: direct LLM with context (original behavior)
   if (!apiKey || !apiKey.trim()) {
     return {
       error: true,
-      message: '🔑 Groq API key missing',
+      message: "🔑 Groq API key missing",
       needsSetup: true,
     };
   }
@@ -113,82 +232,258 @@ export async function answerWithAgent(
   // Load conversation memory for context
   const memory = new ConversationMemory();
   const relevantHistory = await memory.getRelevantHistory(userQuestion, 3);
-  
+
+  // Normalize conversationHistory to ensure proper format
+  // Handle both raw history objects and properly formatted messages
+  const normalizedHistory = conversationHistory
+    .map((item) => {
+      // If already in correct format, return as-is
+      if (item && item.role && item.content) {
+        return item;
+      }
+      // If it's a raw interaction object, convert it
+      if (item && item.raw) {
+        return {
+          role: "user",
+          content: item.raw,
+        };
+      }
+      // If it's just a string, treat as user message
+      if (typeof item === "string") {
+        return {
+          role: "user",
+          content: item,
+        };
+      }
+      // Skip invalid items
+      return null;
+    })
+    .filter(Boolean);
+
   // Build enriched conversation history with relevant past conversations
   const enrichedHistory = [
-    ...conversationHistory,
-    ...relevantHistory.flatMap(conv => [
+    ...normalizedHistory,
+    ...relevantHistory.flatMap((conv) => [
       {
-        role: 'user',
+        role: "user",
         content: `[Previous conversation] ${conv.question}`,
       },
       {
-        role: 'assistant',
-        content: typeof conv.response === 'string' ? conv.response : conv.response.message || JSON.stringify(conv.response),
+        role: "assistant",
+        content:
+          typeof conv.response === "string"
+            ? conv.response
+            : conv.response.message || JSON.stringify(conv.response),
       },
     ]),
   ];
 
   // Build context by calling tools (only what's needed)
-  const context = buildMinimalContext(userQuestion, thermostatData, userSettings, userLocation);
+  const context = await buildMinimalContext(
+    userQuestion,
+    thermostatData,
+    userSettings,
+    userLocation
+  );
+
+  // Check for Byzantine Mode (Easter egg!)
+  let byzantineMode = false;
+  if (typeof window !== "undefined") {
+    byzantineMode = localStorage.getItem("byzantineMode") === "true";
+    if (byzantineMode) {
+      console.log(
+        "[Joule] 🕯️ Byzantine Mode ACTIVE - Rejoice, Oh Coil Unfrosted!"
+      );
+    }
+  }
+  const systemPrompt = byzantineMode
+    ? BYZANTINE_SYSTEM_PROMPT
+    : MINIMAL_SYSTEM_PROMPT;
 
   // Build messages array
+  const userContent = byzantineMode
+    ? `${context}\n\n[REMEMBER: Respond ONLY in Byzantine liturgical chant style. Start with "Oh" and include "Rejoice, Oh Coil Unfrosted!" refrains.]\n\nUser question: ${userQuestion}`
+    : `${context}\n\nUser question: ${userQuestion}`;
+
   const messages = [
-    { role: 'system', content: MINIMAL_SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     ...enrichedHistory,
     {
-      role: 'user',
-      content: `${context}\n\nUser question: ${userQuestion}`,
+      role: "user",
+      content: userContent,
     },
   ];
 
+  // Validate messages format
+  const validMessages = messages.filter((msg) => {
+    if (!msg || typeof msg !== "object") return false;
+    if (!msg.role || !["system", "user", "assistant"].includes(msg.role))
+      return false;
+    if (typeof msg.content !== "string") return false;
+    return true;
+  });
+
+  if (validMessages.length === 0) {
+    return {
+      error: true,
+      message: "Invalid message format: no valid messages to send",
+    };
+  }
+
+  // Get model from options or localStorage, fallback to default
+  let modelName = model;
+  if (!modelName && typeof window !== "undefined") {
+    modelName = localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+  }
+  if (!modelName) {
+    modelName = "llama-3.1-8b-instant";
+  }
+
   // Call Groq API
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages,
-        temperature: 0.7,
-        max_tokens: 300, // Keep responses concise
-      }),
-    });
+    const requestBody = {
+      model: modelName,
+      messages: validMessages,
+      temperature: byzantineMode ? 0.9 : 0.7, // Higher creativity for Byzantine mode
+      max_tokens: byzantineMode ? 800 : 800, // Increased for complete responses
+    };
+
+    // Log request for debugging (remove in production)
+    if (import.meta.env.DEV) {
+      console.log("Groq API request:", {
+        model: modelName,
+        messageCount: messages.length,
+        firstMessageLength: messages[0]?.content?.length || 0,
+      });
+    }
+
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      }
+    );
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      
+
+      // Log detailed error for debugging
+      console.error("Groq API error:", {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+      });
+
       // Handle rate limiting
       if (response.status === 429) {
         return {
           error: true,
-          message: 'Rate limit exceeded. Please wait a moment and try again.',
+          message: "Rate limit exceeded. Please wait a moment and try again.",
         };
       }
+
+      // Handle 401 Unauthorized - Invalid API Key
+      if (response.status === 401) {
+        return {
+          error: true,
+          message: "Invalid API Key",
+          needsApiKey: true,
+        };
+      }
+
+      // Handle 400 Bad Request with detailed message
+      if (response.status === 400) {
+        const errorMessage =
+          errorData.error?.message || errorData.message || "Invalid request";
+        
+        // Check if it's an API key issue
+        const isApiKeyError = errorMessage.toLowerCase().includes("api key") || 
+                             errorMessage.toLowerCase().includes("authentication") ||
+                             errorMessage.toLowerCase().includes("unauthorized");
+        
+        if (isApiKeyError) {
+          return {
+            error: true,
+            message: "Invalid API Key",
+            needsApiKey: true,
+          };
+        }
+        
+        return {
+          error: true,
+          message: `Invalid request to Groq API: ${errorMessage}. Check your model name and request format.`,
+          needsModelUpdate:
+            errorMessage.includes("model") || errorMessage.includes("Model"),
+        };
+      }
+
+      // Check error message for API key issues even if status isn't 401
+      const errorMessage = errorData.error?.message || errorData.message || response.statusText;
+      const isApiKeyError = errorMessage.toLowerCase().includes("api key") || 
+                           errorMessage.toLowerCase().includes("invalid api key") ||
+                           errorMessage.toLowerCase().includes("authentication");
       
+      if (isApiKeyError) {
+        return {
+          error: true,
+          message: "Invalid API Key",
+          needsApiKey: true,
+        };
+      }
+
       return {
         error: true,
-        message: `Groq request failed: ${errorData.error?.message || response.statusText}`,
+        message: `Groq request failed: ${errorMessage}`,
       };
     }
 
     const data = await response.json();
-    const answer = data.choices?.[0]?.message?.content;
+    const choice = data.choices?.[0];
+    const answer = choice?.message?.content;
+    const finishReason = choice?.finish_reason;
 
     if (!answer) {
       return {
         error: true,
-        message: 'No response from Groq API',
+        message: "No response from Groq API",
       };
+    }
+
+    // Check if response was truncated
+    let finalAnswer = answer;
+    if (finishReason === "length") {
+      // Response was cut off due to token limit
+      // Try to clean up the ending if it's mid-sentence
+      const lastSentenceEnd = Math.max(
+        finalAnswer.lastIndexOf("."),
+        finalAnswer.lastIndexOf("!"),
+        finalAnswer.lastIndexOf("?")
+      );
+      if (lastSentenceEnd > finalAnswer.length - 50) {
+        // If the last sentence end is near the end, truncate there
+        finalAnswer = finalAnswer.substring(0, lastSentenceEnd + 1);
+      }
+      finalAnswer +=
+        "\n\n[Response was truncated due to length limit. Please ask a more specific question for a complete answer.]";
     }
 
     const result = {
       success: true,
-      message: answer,
+      message: finalAnswer,
       tokensUsed: data.usage?.total_tokens,
+      wasTruncated: finishReason === "length",
     };
 
     // Save to conversation memory
@@ -200,11 +495,28 @@ export async function answerWithAgent(
         tokensUsed: data.usage?.total_tokens,
       });
     } catch (err) {
-      console.warn('Failed to save conversation memory:', err);
+      console.warn("Failed to save conversation memory:", err);
     }
 
     return result;
   } catch (error) {
+    // Handle timeout and network errors
+    if (error.name === "AbortError") {
+      return {
+        error: true,
+        message:
+          "Request timed out. The API took too long to respond. Please try again.",
+      };
+    }
+
+    // Handle network errors
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      return {
+        error: true,
+        message:
+          "Network error. Please check your internet connection and try again.",
+      };
+    }
     return {
       error: true,
       message: `Request failed: ${error.message}`,
@@ -225,13 +537,72 @@ async function answerWithPlanning(
   conversationHistory,
   options
 ) {
-  const { enableProactive, maxRetries, onProgress } = options;
+  const { enableProactive, maxRetries, onProgress, model = null } = options;
 
   // Initialize calculator tools
   const tools = {
     balancePoint: {
       name: "Balance Point Calculator",
-      execute: async (params) => calculateBalancePoint({ ...userSettings, ...params }),
+      execute: async (params) => {
+        // Ensure we have valid settings with defaults
+        const settingsForCalc = {
+          squareFeet: 2000,
+          ceilingHeight: 8,
+          insulationLevel: 1.0,
+          hspf2: 9,
+          tons: 3,
+          targetIndoorTemp: 68,
+          designOutdoorTemp: 20,
+          ...userSettings, // User settings override defaults
+          ...params, // Params override everything
+        };
+
+        // Convert capacity (kBTU) to tons if needed
+        if (settingsForCalc.capacity && !settingsForCalc.tons) {
+          settingsForCalc.tons = settingsForCalc.capacity / 12.0;
+        }
+
+        // Use winter thermostat as targetIndoorTemp if available
+        if (
+          settingsForCalc.winterThermostat &&
+          !settingsForCalc.targetIndoorTemp
+        ) {
+          settingsForCalc.targetIndoorTemp = settingsForCalc.winterThermostat;
+        }
+
+        const result = calculateBalancePoint(settingsForCalc);
+
+        // Ensure we always return a result, even if balance point is null
+        if (!result || result.balancePoint === null) {
+          // Provide helpful diagnostic information
+          const missing = [];
+          if (!settingsForCalc.tons && !settingsForCalc.capacity)
+            missing.push("system capacity");
+          if (!settingsForCalc.hspf2) missing.push("HSPF2 rating");
+          if (!settingsForCalc.squareFeet) missing.push("square footage");
+
+          return {
+            ...result,
+            balancePoint: null,
+            error:
+              missing.length > 0
+                ? `Missing: ${missing.join(", ")}`
+                : "Calculation returned null - system may be extremely oversized or undersized",
+            diagnostic: {
+              hasCapacity: !!(settingsForCalc.tons || settingsForCalc.capacity),
+              hasHSPF2: !!settingsForCalc.hspf2,
+              hasSquareFeet: !!settingsForCalc.squareFeet,
+              capacity:
+                settingsForCalc.capacity ||
+                (settingsForCalc.tons ? settingsForCalc.tons * 12 : null),
+              hspf2: settingsForCalc.hspf2,
+              squareFeet: settingsForCalc.squareFeet,
+            },
+          };
+        }
+
+        return result;
+      },
     },
     charging: {
       name: "A/C Charging Calculator",
@@ -239,16 +610,21 @@ async function answerWithPlanning(
     },
     performance: {
       name: "Performance Analyzer",
-      execute: async (params) => calculatePerformanceMetrics({ ...userSettings, ...params }),
+      execute: async (params) =>
+        calculatePerformanceMetrics({ ...userSettings, ...params }),
     },
     setback: {
       name: "Setback Strategy",
-      execute: async (params) => calculateSetbackSavings({ ...userSettings, ...params }),
+      execute: async (params) =>
+        calculateSetbackSavings({ ...userSettings, ...params }),
     },
     comparison: {
       name: "System Comparison",
       execute: async (params) => {
-        const balancePoint = calculateBalancePoint({ ...userSettings, ...params });
+        const balancePoint = calculateBalancePoint({
+          ...userSettings,
+          ...params,
+        });
         return compareHeatingSystems({
           ...userSettings,
           ...params,
@@ -259,59 +635,158 @@ async function answerWithPlanning(
   };
 
   // Step 1: Reasoning - understand intent
-  const reasoning = analyzeQuery(userQuestion, userSettings, conversationHistory);
-  if (onProgress) onProgress({ name: 'Reasoning', tool: 'analyze', reason: reasoning.explanation });
+  const reasoning = analyzeQuery(
+    userQuestion,
+    userSettings,
+    conversationHistory
+  );
+  if (onProgress)
+    onProgress({
+      name: "Reasoning",
+      tool: "analyze",
+      reason: reasoning.explanation,
+    });
 
   // Step 2: Planning - create execution plan
   const plan = createExecutionPlan(reasoning, tools);
-  if (onProgress) onProgress({ name: 'Planning', tool: 'plan', reason: `${plan.steps.length} steps` });
+  if (onProgress)
+    onProgress({
+      name: "Planning",
+      tool: "plan",
+      reason: `${plan.steps.length} steps`,
+    });
 
   // Step 3: Execution - run tools
-  const executionResults = await executePlan(plan, tools, userSettings, onProgress);
+  const executionResults = await executePlan(
+    plan,
+    tools,
+    userSettings,
+    onProgress
+  );
 
   // Step 4: Generate response using LLM with tool results
-  const context = buildMinimalContext(userQuestion, thermostatData, userSettings, userLocation);
+  const context = await buildMinimalContext(
+    userQuestion,
+    thermostatData,
+    userSettings,
+    userLocation
+  );
   const toolResultsSummary = formatToolResults(executionResults);
-  
+
   const memory = new ConversationMemory();
+
+  // Normalize conversationHistory to ensure proper format
+  const normalizedHistory = conversationHistory
+    .map((item) => {
+      // If already in correct format, return as-is
+      if (item && item.role && item.content) {
+        return item;
+      }
+      // If it's a raw interaction object, convert it
+      if (item && item.raw) {
+        return {
+          role: "user",
+          content: item.raw,
+        };
+      }
+      // If it's just a string, treat as user message
+      if (typeof item === "string") {
+        return {
+          role: "user",
+          content: item,
+        };
+      }
+      // Skip invalid items
+      return null;
+    })
+    .filter(Boolean);
+
   const enrichedHistory = [
-    ...conversationHistory,
-    ...(await memory.getRelevantHistory(userQuestion, 3)).flatMap(conv => [
-      { role: 'user', content: `[Previous] ${conv.question}` },
-      { role: 'assistant', content: typeof conv.response === 'string' ? conv.response : conv.response.message || JSON.stringify(conv.response) },
+    ...normalizedHistory,
+    ...(await memory.getRelevantHistory(userQuestion, 3)).flatMap((conv) => [
+      { role: "user", content: `[Previous] ${conv.question}` },
+      {
+        role: "assistant",
+        content:
+          typeof conv.response === "string"
+            ? conv.response
+            : conv.response.message || JSON.stringify(conv.response),
+      },
     ]),
   ];
 
   const messages = [
-    { role: 'system', content: MINIMAL_SYSTEM_PROMPT },
+    { role: "system", content: MINIMAL_SYSTEM_PROMPT },
     ...enrichedHistory,
     {
-      role: 'user',
+      role: "user",
       content: `${context}\n\nTOOL RESULTS:\n${toolResultsSummary}\n\nUser question: ${userQuestion}\n\nProvide a helpful response based on the tool results above.`,
     },
   ];
 
+  // Get model from options or localStorage, fallback to default
+  let modelName = model;
+  if (!modelName && typeof window !== "undefined") {
+    modelName = localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+  }
+  if (!modelName) {
+    modelName = "llama-3.1-8b-instant";
+  }
+
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages,
-        temperature: 0.7,
-        max_tokens: 400,
-      }),
-    });
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages,
+          temperature: 0.7,
+          max_tokens: 800,
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 429) {
-        return { error: true, message: 'Rate limit exceeded. Please wait a moment and try again.' };
+        return {
+          error: true,
+          message: "Rate limit exceeded. Please wait a moment and try again.",
+        };
       }
-      return { error: true, message: `Groq request failed: ${errorData.error?.message || response.statusText}` };
+      
+      // Handle 401 Unauthorized - Invalid API Key
+      if (response.status === 401) {
+        return {
+          error: true,
+          message: "Invalid API Key",
+          needsApiKey: true,
+        };
+      }
+      
+      // Check error message for API key issues
+      const errorMessage = errorData.error?.message || response.statusText;
+      const isApiKeyError = errorMessage.toLowerCase().includes("api key") || 
+                           errorMessage.toLowerCase().includes("invalid api key") ||
+                           errorMessage.toLowerCase().includes("authentication");
+      
+      if (isApiKeyError) {
+        return {
+          error: true,
+          message: "Invalid API Key",
+          needsApiKey: true,
+        };
+      }
+      
+      return {
+        error: true,
+        message: `Groq request failed: ${errorMessage}`,
+      };
     }
 
     const data = await response.json();
@@ -326,14 +801,14 @@ async function answerWithPlanning(
         tokensUsed: data.usage?.total_tokens,
       });
     } catch (err) {
-      console.warn('Failed to save conversation memory:', err);
+      console.warn("Failed to save conversation memory:", err);
     }
 
     return {
       success: true,
       message: answer,
       reasoning: reasoning.explanation,
-      executedTools: plan.steps.map(s => s.tool),
+      executedTools: plan.steps.map((s) => s.tool),
       confidence: reasoning.confidence,
       tokensUsed: data.usage?.total_tokens,
       metadata: {
@@ -357,22 +832,32 @@ function analyzeQuery(query, userSettings, history) {
   const intent = detectIntent(queryLower);
   const entities = extractEntities(queryLower);
   const missingData = identifyMissingData(entities, userSettings, intent);
-  const confidence = calculateConfidence(queryLower, intent, entities, missingData);
+  const confidence = calculateConfidence(
+    queryLower,
+    intent,
+    entities,
+    missingData
+  );
 
   return {
     intent,
     entities,
     missingData,
     confidence,
-    explanation: `Intent: ${intent}, Entities: ${Object.keys(entities).join(', ') || 'none'}, Confidence: ${(confidence * 100).toFixed(0)}%`,
+    explanation: `Intent: ${intent}, Entities: ${
+      Object.keys(entities).join(", ") || "none"
+    }, Confidence: ${(confidence * 100).toFixed(0)}%`,
   };
 }
 
 function detectIntent(queryLower) {
   const patterns = {
-    cost_analysis: /(?:how much|what.*cost|weekly.*cost|monthly.*bill|price|expense)/i,
-    performance_check: /(?:how.*doing|system.*health|performance|efficiency|cop|hspf|seer)/i,
-    savings_optimization: /(?:save|reduce.*cost|lower.*bill|optimize|improve.*efficiency)/i,
+    cost_analysis:
+      /(?:how much|what.*cost|weekly.*cost|monthly.*bill|price|expense)/i,
+    performance_check:
+      /(?:how.*doing|system.*health|performance|efficiency|cop|hspf|seer)/i,
+    savings_optimization:
+      /(?:save|reduce.*cost|lower.*bill|optimize|improve.*efficiency)/i,
     comparison: /(?:compare|vs|versus|which.*better|heat pump.*gas|cheaper)/i,
     forecast: /(?:forecast|predict|next.*week|upcoming|future.*cost)/i,
     balance_point: /(?:balance.*point|when.*aux|auxiliary|switchover)/i,
@@ -382,32 +867,43 @@ function detectIntent(queryLower) {
   for (const [intent, pattern] of Object.entries(patterns)) {
     if (pattern.test(queryLower)) return intent;
   }
-  return 'general_inquiry';
+  return "general_inquiry";
 }
 
 function extractEntities(queryLower) {
   const entities = {};
   const tempMatch = queryLower.match(/(\d{2})\s*°?\s*f/i);
   if (tempMatch) entities.temperature = parseInt(tempMatch[1], 10);
-  const sqftMatch = queryLower.match(/(\d{1,4}(?:,\d{3})*|\d+)\s*(?:sq\.?\s*ft|square\s*feet)/i);
-  if (sqftMatch) entities.squareFeet = parseInt(sqftMatch[1].replace(/,/g, ''), 10);
+  const sqftMatch = queryLower.match(
+    /(\d{1,4}(?:,\d{3})*|\d+)\s*(?:sq\.?\s*ft|square\s*feet)/i
+  );
+  if (sqftMatch)
+    entities.squareFeet = parseInt(sqftMatch[1].replace(/,/g, ""), 10);
   return entities;
 }
 
 function identifyMissingData(entities, userSettings, intent) {
   const missing = [];
-  if (['cost_analysis', 'forecast', 'comparison'].includes(intent) && !entities.squareFeet && !userSettings?.squareFeet) {
-    missing.push('squareFeet');
+  if (
+    ["cost_analysis", "forecast", "comparison"].includes(intent) &&
+    !entities.squareFeet &&
+    !userSettings?.squareFeet
+  ) {
+    missing.push("squareFeet");
   }
-  if (['cost_analysis', 'forecast'].includes(intent) && !entities.location && !userSettings?.city) {
-    missing.push('location');
+  if (
+    ["cost_analysis", "forecast"].includes(intent) &&
+    !entities.location &&
+    !userSettings?.city
+  ) {
+    missing.push("location");
   }
   return missing;
 }
 
 function calculateConfidence(queryLower, intent, entities, missingData) {
   let confidence = 0.5;
-  if (intent !== 'general_inquiry') confidence += 0.3;
+  if (intent !== "general_inquiry") confidence += 0.3;
   confidence += Math.min(0.3, Object.keys(entities).length * 0.1);
   confidence -= missingData.length * 0.1;
   return Math.max(0.3, Math.min(1, confidence));
@@ -420,43 +916,67 @@ function createExecutionPlan(reasoning, tools) {
   const { intent, entities, missingData } = reasoning;
   const steps = [];
 
-  if (missingData.includes('location')) {
-    steps.push({ tool: 'requestLocation', params: {}, reason: 'Need location' });
+  if (missingData.includes("location")) {
+    steps.push({
+      tool: "requestLocation",
+      params: {},
+      reason: "Need location",
+    });
   }
 
   switch (intent) {
-    case 'cost_analysis':
+    case "cost_analysis":
       steps.push(
-        { tool: 'balancePoint', params: {}, reason: 'Determine aux heat trigger' },
-        { tool: 'setback', params: entities, reason: 'Calculate savings' }
+        {
+          tool: "balancePoint",
+          params: {},
+          reason: "Determine aux heat trigger",
+        },
+        { tool: "setback", params: entities, reason: "Calculate savings" }
       );
       break;
-    case 'performance_check':
+    case "performance_check":
       steps.push(
-        { tool: 'performance', params: {}, reason: 'Analyze system performance' },
-        { tool: 'balancePoint', params: {}, reason: 'Check balance point' }
+        {
+          tool: "performance",
+          params: {},
+          reason: "Analyze system performance",
+        },
+        { tool: "balancePoint", params: {}, reason: "Check balance point" }
       );
       break;
-    case 'savings_optimization':
+    case "savings_optimization":
       steps.push(
-        { tool: 'setback', params: {}, reason: 'Calculate setback savings' },
-        { tool: 'comparison', params: {}, reason: 'Compare system options' }
+        { tool: "setback", params: {}, reason: "Calculate setback savings" },
+        { tool: "comparison", params: {}, reason: "Compare system options" }
       );
       break;
-    case 'comparison':
+    case "comparison":
       steps.push(
-        { tool: 'balancePoint', params: {}, reason: 'Get baseline' },
-        { tool: 'comparison', params: {}, reason: 'Compare heat pump vs gas' }
+        { tool: "balancePoint", params: {}, reason: "Get baseline" },
+        { tool: "comparison", params: {}, reason: "Compare heat pump vs gas" }
       );
       break;
-    case 'balance_point':
-      steps.push({ tool: 'balancePoint', params: {}, reason: 'Calculate balance point' });
+    case "balance_point":
+      steps.push({
+        tool: "balancePoint",
+        params: {},
+        reason: "Calculate balance point",
+      });
       break;
-    case 'charging':
-      steps.push({ tool: 'charging', params: entities, reason: 'Calculate charging targets' });
+    case "charging":
+      steps.push({
+        tool: "charging",
+        params: entities,
+        reason: "Calculate charging targets",
+      });
       break;
     default:
-      steps.push({ tool: 'balancePoint', params: {}, reason: 'General analysis' });
+      steps.push({
+        tool: "balancePoint",
+        params: {},
+        reason: "General analysis",
+      });
   }
 
   return { intent, steps, estimatedTime: steps.length * 500 };
@@ -470,12 +990,17 @@ async function executePlan(plan, tools, userSettings, onProgress) {
   const startTime = Date.now();
 
   for (const step of plan.steps) {
-    if (onProgress) onProgress({ name: step.tool, tool: step.tool, reason: step.reason });
+    if (onProgress)
+      onProgress({ name: step.tool, tool: step.tool, reason: step.reason });
 
     try {
       const tool = tools[step.tool];
       if (!tool) {
-        results.push({ tool: step.tool, error: 'Tool not found', params: step.params });
+        results.push({
+          tool: step.tool,
+          error: "Tool not found",
+          params: step.params,
+        });
         continue;
       }
 
@@ -487,73 +1012,93 @@ async function executePlan(plan, tools, userSettings, onProgress) {
         params: step.params,
       });
     } catch (error) {
-      results.push({ tool: step.tool, error: error.message, params: step.params });
+      results.push({
+        tool: step.tool,
+        error: error.message,
+        params: step.params,
+      });
     }
   }
 
   return {
     results,
     totalTime: Date.now() - startTime,
-    toolsUsed: results.map(r => r.tool),
+    toolsUsed: results.map((r) => r.tool),
   };
 }
 
 function summarizeResult(toolName, result) {
   switch (toolName) {
-    case 'balancePoint':
+    case "balancePoint":
       return `Balance point: ${result.balancePoint}°F`;
-    case 'setback':
-      return `Annual savings: $${result.annualSavings || 'N/A'}`;
-    case 'comparison':
-      return `${result.winner || 'N/A'} saves $${result.monthlySavings || 'N/A'}/month`;
-    case 'performance':
-      return `Heat loss factor: ${result.heatLossFactor || 'N/A'} BTU/hr/°F`;
+    case "setback":
+      return `Annual savings: $${result.annualSavings || "N/A"}`;
+    case "comparison":
+      return `${result.winner || "N/A"} saves $${
+        result.monthlySavings || "N/A"
+      }/month`;
+    case "performance":
+      return `Heat loss factor: ${result.heatLossFactor || "N/A"} BTU/hr/°F`;
     default:
       return JSON.stringify(result).slice(0, 100);
   }
 }
 
 function formatToolResults(executionResults) {
-  return executionResults.results.map(result => {
-    if (result.error) {
-      return `- ${result.tool}: ❌ Error: ${result.error}`;
-    }
-    return `- ${result.tool}: ✅ ${result.summary || JSON.stringify(result.data).slice(0, 100)}`;
-  }).join('\n');
+  return executionResults.results
+    .map((result) => {
+      if (result.error) {
+        return `- ${result.tool}: ❌ Error: ${result.error}`;
+      }
+      return `- ${result.tool}: ✅ ${
+        result.summary || JSON.stringify(result.data).slice(0, 100)
+      }`;
+    })
+    .join("\n");
 }
 
 /**
  * Build minimal context - only include what's relevant to the question
  * This keeps token usage low
+ * Now includes RAG knowledge for technical questions
  */
-function buildMinimalContext(question, thermostatData, userSettings, userLocation) {
+async function buildMinimalContext(
+  question,
+  thermostatData,
+  userSettings,
+  userLocation
+) {
   const lowerQuestion = question.toLowerCase();
-  let context = 'CONTEXT:\n';
+  let context = "CONTEXT:\n";
 
   // Check if this is an advanced diagnostic question
-  const isDiagnostic = 
-    lowerQuestion.includes('supply air') ||
-    lowerQuestion.includes('return air') ||
-    lowerQuestion.includes('delta') ||
-    lowerQuestion.includes('cfm') ||
-    lowerQuestion.includes('watt') ||
-    lowerQuestion.includes('stage') ||
-    lowerQuestion.includes('cop') ||
-    lowerQuestion.includes('duty cycle') ||
-    lowerQuestion.includes('lockout') ||
-    lowerQuestion.includes('threshold') ||
-    lowerQuestion.includes('btu') ||
-    lowerQuestion.includes('coil temp');
+  const isDiagnostic =
+    lowerQuestion.includes("supply air") ||
+    lowerQuestion.includes("return air") ||
+    lowerQuestion.includes("delta") ||
+    lowerQuestion.includes("cfm") ||
+    lowerQuestion.includes("watt") ||
+    lowerQuestion.includes("stage") ||
+    lowerQuestion.includes("cop") ||
+    lowerQuestion.includes("duty cycle") ||
+    lowerQuestion.includes("lockout") ||
+    lowerQuestion.includes("threshold") ||
+    lowerQuestion.includes("btu") ||
+    lowerQuestion.includes("coil temp");
 
   // For diagnostic questions, check what sensors are available
   if (isDiagnostic) {
-    const diagnostic = getDiagnosticData(question, thermostatData, userSettings);
+    const diagnostic = getDiagnosticData(
+      question,
+      thermostatData,
+      userSettings
+    );
     context += `\nDIAGNOSTIC DATA CHECK:\n`;
     if (diagnostic.available.length > 0) {
-      context += `Available: ${diagnostic.available.join(', ')}\n`;
+      context += `Available: ${diagnostic.available.join(", ")}\n`;
     }
     if (diagnostic.missing.length > 0) {
-      context += `Missing sensors: ${diagnostic.missing.join(', ')}\n`;
+      context += `Missing sensors: ${diagnostic.missing.join(", ")}\n`;
       context += `These require specialized sensors/equipment not available in this system.\n`;
     }
     // Include what basic data we DO have
@@ -562,69 +1107,478 @@ function buildMinimalContext(question, thermostatData, userSettings, userLocatio
       context += `\nBasic data available: ${state.indoorTemp}°F indoor, target ${state.targetTemp}°F, mode: ${state.mode}`;
       if (state.outdoorTemp) context += `, ${state.outdoorTemp}°F outdoor`;
     }
+
+    // Include CSV diagnostics data if available (from System Performance Analyzer)
+    if (diagnostic.csvDiagnostics && diagnostic.csvDiagnostics.hasData) {
+      context += `\n\nCSV ANALYSIS DATA (from System Performance Analyzer):\n`;
+      if (diagnostic.csvDiagnostics.latestAnalysis) {
+        const analysis = diagnostic.csvDiagnostics.latestAnalysis;
+        context += `Latest analysis results:\n`;
+        if (analysis.heatLossFactor) {
+          context += `- Heat Loss Factor: ${analysis.heatLossFactor.toLocaleString()} BTU/hr per °F\n`;
+        }
+        if (analysis.shortCycling) {
+          context += `- Short Cycling Detected: ${analysis.shortCycling}\n`;
+          if (analysis.cyclesPerHour) {
+            context += `- Cycles per hour: ${analysis.cyclesPerHour}\n`;
+          }
+          if (analysis.avgRuntimeMinutes) {
+            context += `- Average runtime: ${analysis.avgRuntimeMinutes} minutes\n`;
+          }
+        }
+        if (analysis.oversized) {
+          context += `- System appears oversized: ${analysis.oversized}\n`;
+        }
+        if (
+          analysis.recommendations &&
+          Array.isArray(analysis.recommendations)
+        ) {
+          context += `- Recommendations: ${analysis.recommendations.join(
+            ", "
+          )}\n`;
+        }
+      }
+      if (diagnostic.csvDiagnostics.parsedCsvData) {
+        const rowCount = Array.isArray(diagnostic.csvDiagnostics.parsedCsvData)
+          ? diagnostic.csvDiagnostics.parsedCsvData.length
+          : 0;
+        if (rowCount > 0) {
+          context += `- CSV data points available: ${rowCount} rows\n`;
+        }
+      }
+    }
+  }
+
+  // Also check for short cycling or system performance questions even if not explicitly diagnostic
+  const isShortCyclingQuestion =
+    lowerQuestion.includes("short cycling") ||
+    lowerQuestion.includes("short cycle") ||
+    lowerQuestion.includes("cycling") ||
+    lowerQuestion.includes("system performance") ||
+    (lowerQuestion.includes("bill") &&
+      (lowerQuestion.includes("high") || lowerQuestion.includes("expensive")));
+
+  if (isShortCyclingQuestion) {
+    const csvDiagnostics = getCSVDiagnosticsData();
+    if (csvDiagnostics && csvDiagnostics.hasData) {
+      context += `\n\nCSV ANALYSIS DATA (from System Performance Analyzer):\n`;
+      if (csvDiagnostics.latestAnalysis) {
+        const analysis = csvDiagnostics.latestAnalysis;
+        context += `Latest analysis results:\n`;
+        if (analysis.heatLossFactor) {
+          context += `- Heat Loss Factor: ${analysis.heatLossFactor.toLocaleString()} BTU/hr per °F\n`;
+        }
+        if (analysis.shortCycling !== undefined) {
+          context += `- Short Cycling Detected: ${
+            analysis.shortCycling ? "Yes" : "No"
+          }\n`;
+          if (analysis.cyclesPerHour) {
+            context += `- Cycles per hour: ${analysis.cyclesPerHour}\n`;
+          }
+          if (analysis.avgRuntimeMinutes) {
+            context += `- Average runtime: ${analysis.avgRuntimeMinutes} minutes per cycle\n`;
+          }
+        }
+        if (analysis.oversized !== undefined) {
+          context += `- System appears oversized: ${
+            analysis.oversized ? "Yes" : "No"
+          }\n`;
+        }
+        if (
+          analysis.recommendations &&
+          Array.isArray(analysis.recommendations)
+        ) {
+          context += `- Recommendations: ${analysis.recommendations.join(
+            ", "
+          )}\n`;
+        }
+      }
+    } else {
+      context += `\n\nCSV Analysis Data: Not available. Upload thermostat CSV data on the System Performance Analyzer page to get detailed cycling analysis.\n`;
+    }
   }
 
   // Only include system state if question is about current conditions
   if (
-    !isDiagnostic && (
-      lowerQuestion.includes('temp') ||
-      lowerQuestion.includes('mode') ||
-      lowerQuestion.includes('running') ||
-      lowerQuestion.includes('status')
-    )
+    !isDiagnostic &&
+    (lowerQuestion.includes("temp") ||
+      lowerQuestion.includes("mode") ||
+      lowerQuestion.includes("running") ||
+      lowerQuestion.includes("status"))
   ) {
     const state = getCurrentState(thermostatData);
     if (state.indoorTemp) {
       context += `\nCurrent: ${state.indoorTemp}°F indoor, target ${state.targetTemp}°F, mode: ${state.mode}`;
       if (state.outdoorTemp) context += `, ${state.outdoorTemp}°F outdoor`;
     } else {
-      context += '\nNo live thermostat data available';
+      context += "\nNo live thermostat data available";
     }
   }
 
-  // Include system specs if question is about efficiency, system, or heat pump
+  // Always include system specs if available (not just for specific keywords)
+  // This ensures Joule can see system details even in initial greetings
+  const settings = getUserSettings(userSettings);
+  if (settings) {
+    // Format system type nicely
+    const systemType =
+      settings.primarySystem === "heatPump"
+        ? "heat pump"
+        : settings.primarySystem === "gasFurnace"
+        ? "gas furnace"
+        : settings.primarySystem || "unknown system";
+
+    context += `\nSystem: ${systemType}`;
+
+    if (settings.hspf2) {
+      context += `, HSPF2: ${settings.hspf2}`;
+    }
+
+    if (settings.seer2) {
+      context += `, SEER2: ${settings.seer2}`;
+    } else if (settings.efficiency) {
+      context += `, SEER2: ${settings.efficiency}`;
+    }
+
+    if (settings.capacity) {
+      context += `, Capacity: ${settings.capacity}k BTU`;
+    } else if (settings.tons) {
+      context += `, Capacity: ${(settings.tons * 12).toFixed(0)}k BTU (${
+        settings.tons
+      } tons)`;
+    }
+
+    // Include thermostat settings
+    if (settings.winterThermostat) {
+      context += `\nThermostat settings: Winter ${settings.winterThermostat}°F`;
+    }
+    if (settings.summerThermostat) {
+      context += `, Summer ${settings.summerThermostat}°F`;
+    }
+
+    // Always include thermostat threshold settings (not just when asked)
+    // These are critical for understanding system behavior and short cycling
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      if (thermostatSettings && thermostatSettings.thresholds) {
+        const t = thermostatSettings.thresholds;
+        context += `\nThermostat Threshold Settings:`;
+        if (t.heatDifferential !== undefined)
+          context += ` Heat Differential: ${t.heatDifferential}°F`;
+        if (t.coolDifferential !== undefined)
+          context += `, Cool Differential: ${t.coolDifferential}°F`;
+        if (t.heatMinOnTime !== undefined)
+          context += `, Heat Min On Time: ${t.heatMinOnTime}s (${Math.round(
+            t.heatMinOnTime / 60
+          )} min)`;
+        if (t.coolMinOnTime !== undefined)
+          context += `, Cool Min On Time: ${t.coolMinOnTime}s (${Math.round(
+            t.coolMinOnTime / 60
+          )} min)`;
+        if (t.compressorMinCycleOff !== undefined)
+          context += `, Compressor Min Cycle Off: ${
+            t.compressorMinCycleOff
+          }s (${Math.round(t.compressorMinCycleOff / 60)} min)`;
+        if (t.compressorMinOutdoorTemp !== undefined)
+          context += `, Compressor Lockout: ${t.compressorMinOutdoorTemp}°F`;
+        if (t.auxHeatMaxOutdoorTemp !== undefined)
+          context += `, Aux Heat Max Outdoor Temp: ${t.auxHeatMaxOutdoorTemp}°F`;
+        if (t.heatDissipationTime !== undefined)
+          context += `, Heat Dissipation Time: ${t.heatDissipationTime}s`;
+        if (t.coolDissipationTime !== undefined)
+          context += `, Cool Dissipation Time: ${t.coolDissipationTime}s`;
+      }
+    } catch (e) {
+      // Ignore errors loading thermostat settings - module may not be available in all contexts
+    }
+
+    // Include square footage if available
+    if (settings.squareFeet) {
+      context += `\nHome: ${settings.squareFeet.toLocaleString()} sq ft`;
+    }
+  } else {
+    context += `\nSystem: Settings not available - user should configure system details in Settings page`;
+  }
+
+  // Include balance point if question is about balance point, aux heat, or switchover
   if (
-    lowerQuestion.includes('efficiency') ||
-    lowerQuestion.includes('system') ||
-    lowerQuestion.includes('heat pump') ||
-    lowerQuestion.includes('hspf') ||
-    lowerQuestion.includes('seer') ||
-    lowerQuestion.includes('configuration') ||
-    lowerQuestion.includes('setting')
+    lowerQuestion.includes("balance point") ||
+    lowerQuestion.includes("balancepoint") ||
+    lowerQuestion.includes("aux") ||
+    lowerQuestion.includes("switchover") ||
+    lowerQuestion.includes("auxiliary")
   ) {
-    const settings = getUserSettings(userSettings);
-    if (settings) {
-      context += `\nSystem: ${settings.primarySystem}, HSPF2: ${settings.hspf2 || 'unknown'}, SEER2: ${settings.seer2 || 'unknown'}`;
-      if (settings.capacity) context += `, ${settings.capacity}k BTU`;
+    try {
+      // Always calculate balance point - use defaults if userSettings is missing
+      const settingsForCalc = {
+        // Defaults first
+        squareFeet: 2000,
+        ceilingHeight: 8,
+        insulationLevel: 1.0,
+        hspf2: 9,
+        tons: 3,
+        targetIndoorTemp: 68,
+        designOutdoorTemp: 20,
+        // Then override with user settings if available
+        ...(userSettings || {}),
+      };
+
+      // Convert capacity (kBTU) to tons if needed: 12 kBTU = 1 ton
+      if (settingsForCalc.capacity && !settingsForCalc.tons) {
+        settingsForCalc.tons = settingsForCalc.capacity / 12.0;
+      }
+
+      // Use winter thermostat as targetIndoorTemp if available
+      if (
+        settingsForCalc.winterThermostat &&
+        !settingsForCalc.targetIndoorTemp
+      ) {
+        settingsForCalc.targetIndoorTemp = settingsForCalc.winterThermostat;
+      }
+
+      const balancePointResult = calculateBalancePoint(settingsForCalc);
+      if (balancePointResult && balancePointResult.balancePoint) {
+        context += `\nBalance point: ${balancePointResult.balancePoint}°F`;
+        if (balancePointResult.heatLossFactor) {
+          context += ` (Heat loss: ${balancePointResult.heatLossFactor.toLocaleString()} BTU/hr per °F)`;
+        }
+      } else {
+        // Balance point calculation returned null - provide diagnostic info
+        const usingDefaults = [];
+        if (!userSettings?.capacity && !userSettings?.tons)
+          usingDefaults.push("capacity (using default: 3 tons)");
+        if (!userSettings?.hspf2)
+          usingDefaults.push("HSPF2 (using default: 9)");
+        if (!userSettings?.squareFeet)
+          usingDefaults.push("square footage (using default: 2000 sq ft)");
+
+        if (usingDefaults.length > 0) {
+          context += `\nBalance point: Calculation returned null. Using defaults for ${usingDefaults.join(
+            ", "
+          )}. Set your actual values in Settings for accurate calculation. Current values: capacity=${
+            settingsForCalc.capacity || settingsForCalc.tons * 12
+          }k BTU, HSPF2=${settingsForCalc.hspf2}, squareFeet=${
+            settingsForCalc.squareFeet
+          } sq ft.`;
+        } else {
+          // All data present but still null - system may be extremely oversized/undersized
+          context += `\nBalance point: Calculation returned null. Your system may be extremely oversized (balance point well below 20°F) or undersized (balance point well above 60°F). Current settings: ${
+            settingsForCalc.capacity || settingsForCalc.tons * 12
+          }k BTU, HSPF2: ${settingsForCalc.hspf2}, ${
+            settingsForCalc.squareFeet
+          } sq ft. The calculator will attempt to extrapolate.`;
+        }
+
+        // Still include the result even if balance point is null - it has other useful info
+        if (balancePointResult) {
+          if (balancePointResult.heatLossFactor) {
+            context += ` Heat loss factor: ${balancePointResult.heatLossFactor.toLocaleString()} BTU/hr per °F.`;
+          }
+          if (balancePointResult.diagnostic) {
+            context += ` Diagnostic: ${JSON.stringify(
+              balancePointResult.diagnostic
+            )}.`;
+          }
+        }
+      }
+    } catch (e) {
+      context += `\nBalance point: Calculation error - ${e.message}`;
     }
   }
 
-  // Include location if question is about climate, weather, or costs
-  if (
-    lowerQuestion.includes('weather') ||
-    lowerQuestion.includes('climate') ||
-    lowerQuestion.includes('location') ||
-    lowerQuestion.includes('cost') ||
-    lowerQuestion.includes('outdoor temp')
-  ) {
-    const location = getLocationContext(userLocation);
-    if (location) {
+  // Always include location if available (not just for specific keywords)
+  // This ensures Joule can see location details even in initial greetings
+  const location = getLocationContext(userLocation, userSettings);
+  if (location && !location.error) {
+    // Valid location data
+    if (location.city && location.state) {
       context += `\nLocation: ${location.city}, ${location.state}`;
       if (location.elevation) context += ` (${location.elevation}ft elevation)`;
+    } else if (location.lat && location.lon) {
+      context += `\nLocation: ${location.lat.toFixed(
+        3
+      )}, ${location.lon.toFixed(3)} (coordinates only)`;
+      if (location.elevation) context += `, ${location.elevation}ft elevation`;
+    } else if (location.elevation) {
+      // Only elevation available
+      context += `\nLocation: ${location.elevation}ft elevation (city/state not set)`;
+    }
+  } else if (location && location.error) {
+    // Location missing - include helpful message for the agent
+    context += `\nLocation: Not available. ${location.message}`;
+    context += ` ${location.howToFix}`;
+  }
+
+  // Include ASHRAE 55 recommendations if question is about comfort or temperature settings
+  if (
+    lowerQuestion.includes("ashrae") ||
+    lowerQuestion.includes("comfort") ||
+    lowerQuestion.includes("thermal comfort") ||
+    lowerQuestion.includes("recommended temp") ||
+    lowerQuestion.includes("optimal temp") ||
+    lowerQuestion.includes("setpoint") ||
+    (lowerQuestion.includes("temperature") &&
+      (lowerQuestion.includes("recommend") ||
+        lowerQuestion.includes("should") ||
+        lowerQuestion.includes("optimal")))
+  ) {
+    try {
+      // Determine season from user location or current month
+      const currentMonth = new Date().getMonth() + 1; // 1-12
+      const isHeatingSeason = currentMonth >= 10 || currentMonth <= 4; // Oct-Apr
+      const season = isHeatingSeason ? "winter" : "summer";
+
+      // Get relative humidity if available (default to 50%)
+      const relativeHumidity = userSettings?.indoorHumidity || 50;
+
+      const ashraeResult = calculateASHRAE55Comfort({
+        relativeHumidity,
+        season,
+        metabolicRate: 1.0, // Sedentary activity
+        clothingInsulation: season === "winter" ? 1.0 : 0.5,
+      });
+
+      context += `\n\nASHRAE Standard 55 Thermal Comfort Recommendations:`;
+      context += `\nOptimal temperature: ${ashraeResult.optimalTemp}°F for ${season} (${relativeHumidity}% RH)`;
+      context += `\nAcceptable range: ${ashraeResult.tempRange.min}°F - ${ashraeResult.tempRange.max}°F`;
+      context += `\nSleep/unoccupied: ${getASHRAE55SleepTemp(season)}°F`;
+      context += `\n${ashraeResult.explanation}`;
+    } catch (e) {
+      // Ignore errors in ASHRAE calculation
     }
   }
 
-  // Hint at available knowledge
-  if (
-    lowerQuestion.includes('heat pump') ||
-    lowerQuestion.includes('aux') ||
-    lowerQuestion.includes('strip') ||
-    lowerQuestion.includes('defrost') ||
-    lowerQuestion.includes('recovery') ||
-    lowerQuestion.includes('lockout') ||
-    lowerQuestion.includes('threshold')
-  ) {
-    context += '\n\nYou can search knowledge base with searchHVACKnowledge(query) for detailed info.';
+  // Auto-fetch RAG knowledge for technical questions
+  const isTechnicalQuestion =
+    lowerQuestion.includes("manual j") ||
+    lowerQuestion.includes("manual s") ||
+    lowerQuestion.includes("manual d") ||
+    lowerQuestion.includes("ashrae") ||
+    lowerQuestion.includes("heat loss") ||
+    lowerQuestion.includes("load calculation") ||
+    lowerQuestion.includes("sizing") ||
+    lowerQuestion.includes("oversized") ||
+    lowerQuestion.includes("undersized") ||
+    lowerQuestion.includes("duct") ||
+    lowerQuestion.includes("airflow") ||
+    lowerQuestion.includes("ventilation") ||
+    lowerQuestion.includes("thermal comfort") ||
+    lowerQuestion.includes("comfort zone") ||
+    lowerQuestion.includes("heat pump") ||
+    lowerQuestion.includes("aux") ||
+    lowerQuestion.includes("strip") ||
+    lowerQuestion.includes("defrost") ||
+    lowerQuestion.includes("recovery") ||
+    lowerQuestion.includes("lockout") ||
+    lowerQuestion.includes("threshold") ||
+    lowerQuestion.includes("efficiency") ||
+    lowerQuestion.includes("hspf") ||
+    lowerQuestion.includes("seer") ||
+    lowerQuestion.includes("cop") ||
+    lowerQuestion.includes("balance point") ||
+    lowerQuestion.includes("doe") ||
+    lowerQuestion.includes("nrel") ||
+    lowerQuestion.includes("tmy3") ||
+    lowerQuestion.includes("short cycling") ||
+    lowerQuestion.includes("short cycle") ||
+    lowerQuestion.includes("nema") ||
+    lowerQuestion.includes("heat dissipation") ||
+    lowerQuestion.includes("dissipation time") ||
+    lowerQuestion.includes("free heat") ||
+    lowerQuestion.includes("economic balance") ||
+    lowerQuestion.includes("close vent") ||
+    lowerQuestion.includes("closing vent") ||
+    lowerQuestion.includes("bill") ||
+    lowerQuestion.includes("predicted") ||
+    lowerQuestion.includes("forecast") ||
+    lowerQuestion.includes("save") ||
+    lowerQuestion.includes("savings") ||
+    lowerQuestion.includes("direction") ||
+    lowerQuestion.includes("faces") ||
+    lowerQuestion.includes("roof color") ||
+    lowerQuestion.includes("dark roof") ||
+    lowerQuestion.includes("sol-air") ||
+    lowerQuestion.includes("altitude") ||
+    lowerQuestion.includes("elevation") ||
+    lowerQuestion.includes("derate") ||
+    lowerQuestion.includes("hepa") ||
+    lowerQuestion.includes("merv") ||
+    lowerQuestion.includes("flex duct") ||
+    lowerQuestion.includes("draft") ||
+    lowerQuestion.includes("window") ||
+    lowerQuestion.includes("radiant") ||
+    lowerQuestion.includes("co2") ||
+    lowerQuestion.includes("carbon dioxide") ||
+    lowerQuestion.includes("thermal decay") ||
+    lowerQuestion.includes("newton") ||
+    lowerQuestion.includes("cooling law") ||
+    lowerQuestion.includes("hspf2") ||
+    lowerQuestion.includes("seer2") ||
+    lowerQuestion.includes("cop") ||
+    lowerQuestion.includes("eer") ||
+    lowerQuestion.includes("model") ||
+    lowerQuestion.includes("specification") ||
+    lowerQuestion.includes("capacity") ||
+    lowerQuestion.includes("cfm") ||
+    lowerQuestion.includes("airflow") ||
+    lowerQuestion.includes("refrigerant") ||
+    lowerQuestion.includes("r-410a") ||
+    lowerQuestion.includes("r-454b") ||
+    lowerQuestion.includes("r-32") ||
+    lowerQuestion.includes("clearance") ||
+    lowerQuestion.includes("line set") ||
+    lowerQuestion.includes("lineset") ||
+    lowerQuestion.includes("electrical") ||
+    lowerQuestion.includes("mca") ||
+    lowerQuestion.includes("mop") ||
+    lowerQuestion.includes("gas line") ||
+    lowerQuestion.includes("dual fuel") ||
+    lowerQuestion.includes("drain pan") ||
+    lowerQuestion.includes("fault code") ||
+    lowerQuestion.includes("error code") ||
+    lowerQuestion.includes("troubleshoot") ||
+    lowerQuestion.includes("diagnostic") ||
+    lowerQuestion.includes("flame sensor") ||
+    lowerQuestion.includes("inducer") ||
+    lowerQuestion.includes("pressure switch") ||
+    lowerQuestion.includes("ahri") ||
+    lowerQuestion.includes("matching") ||
+    lowerQuestion.includes("compatible") ||
+    lowerQuestion.includes("approved") ||
+    lowerQuestion.includes("combination") ||
+    lowerQuestion.includes("tax credit") ||
+    lowerQuestion.includes("25c") ||
+    lowerQuestion.includes("energy star") ||
+    lowerQuestion.includes("rebate") ||
+    lowerQuestion.includes("part number") ||
+    lowerQuestion.includes("replacement") ||
+    lowerQuestion.includes("supersede") ||
+    lowerQuestion.includes("obsolete");
+
+  if (isTechnicalQuestion) {
+    try {
+      // Import and use RAG query
+      const { queryHVACKnowledge } = await import("../utils/rag/ragQuery.js");
+      const ragResult = await queryHVACKnowledge(question);
+
+      if (ragResult.success && ragResult.content) {
+        // Truncate to avoid token limits (keep first 2000 chars)
+        const knowledgeSnippet = ragResult.content.substring(0, 2000);
+        context += `\n\n═══════════════════════════════════════════════════
+⚠️ CRITICAL: USE THIS KNOWLEDGE BASE CONTENT TO ANSWER THE QUESTION ⚠️
+═══════════════════════════════════════════════════\n\n${knowledgeSnippet}\n\n═══════════════════════════════════════════════════
+IMPORTANT: Base your answer on the knowledge above. Cite specific standards, causes, symptoms, and solutions from the knowledge base.
+═══════════════════════════════════════════════════\n`;
+        if (ragResult.content.length > 2000) {
+          context +=
+            "\n[Note: Additional knowledge base content was truncated for length]";
+        }
+      }
+    } catch (error) {
+      // If RAG fails, continue without it (non-blocking)
+      console.warn("[groqAgent] RAG query failed:", error);
+      context +=
+        "\n\n[Note: HVAC knowledge base search unavailable - using general knowledge]";
+    }
   }
 
   return context;
@@ -645,32 +1599,63 @@ export async function answerWithRAG(
   let fetchedKnowledge = null;
 
   // Auto-fetch relevant knowledge based on question
-  if (lowerQuestion.includes('supply air') || lowerQuestion.includes('return air') || 
-      lowerQuestion.includes('cfm') || lowerQuestion.includes('watt') || 
-      lowerQuestion.includes('sensor') || lowerQuestion.includes('diagnostic')) {
-    fetchedKnowledge = await searchHVACKnowledge('diagnostic');
-  } else if (lowerQuestion.includes('lockout') || lowerQuestion.includes('threshold') || 
-             lowerQuestion.includes('aux') || lowerQuestion.includes('strip')) {
-    fetchedKnowledge = await searchHVACKnowledge('auxiliary heat');
-  } else if (lowerQuestion.includes('setting') || lowerQuestion.includes('configuration') || 
-             lowerQuestion.includes('ecobee') || lowerQuestion.includes('stage')) {
-    fetchedKnowledge = await searchHVACKnowledge('setting');
-  } else if (lowerQuestion.includes('recovery') || lowerQuestion.includes('setback') || 
-             lowerQuestion.includes('trigger')) {
-    fetchedKnowledge = await searchHVACKnowledge('recovery');
-  } else if (lowerQuestion.includes('cold weather') || lowerQuestion.includes('performance') || 
-             lowerQuestion.includes('cop') || lowerQuestion.includes('degrees per hour')) {
-    fetchedKnowledge = await searchHVACKnowledge('cold weather');
-  } else if (lowerQuestion.includes('heat pump') || lowerQuestion.includes('slow')) {
-    fetchedKnowledge = await searchHVACKnowledge('heat pump');
-  } else if (lowerQuestion.includes('defrost') || lowerQuestion.includes('steam') || 
-             lowerQuestion.includes('ice')) {
-    fetchedKnowledge = await searchHVACKnowledge('defrost');
+  if (
+    lowerQuestion.includes("supply air") ||
+    lowerQuestion.includes("return air") ||
+    lowerQuestion.includes("cfm") ||
+    lowerQuestion.includes("watt") ||
+    lowerQuestion.includes("sensor") ||
+    lowerQuestion.includes("diagnostic")
+  ) {
+    fetchedKnowledge = await searchHVACKnowledge("diagnostic");
+  } else if (
+    lowerQuestion.includes("lockout") ||
+    lowerQuestion.includes("threshold") ||
+    lowerQuestion.includes("aux") ||
+    lowerQuestion.includes("strip")
+  ) {
+    fetchedKnowledge = await searchHVACKnowledge("auxiliary heat");
+  } else if (
+    lowerQuestion.includes("setting") ||
+    lowerQuestion.includes("configuration") ||
+    lowerQuestion.includes("ecobee") ||
+    lowerQuestion.includes("stage")
+  ) {
+    fetchedKnowledge = await searchHVACKnowledge("setting");
+  } else if (
+    lowerQuestion.includes("recovery") ||
+    lowerQuestion.includes("setback") ||
+    lowerQuestion.includes("trigger")
+  ) {
+    fetchedKnowledge = await searchHVACKnowledge("recovery");
+  } else if (
+    lowerQuestion.includes("cold weather") ||
+    lowerQuestion.includes("performance") ||
+    lowerQuestion.includes("cop") ||
+    lowerQuestion.includes("degrees per hour")
+  ) {
+    fetchedKnowledge = await searchHVACKnowledge("cold weather");
+  } else if (
+    lowerQuestion.includes("heat pump") ||
+    lowerQuestion.includes("slow")
+  ) {
+    fetchedKnowledge = await searchHVACKnowledge("heat pump");
+  } else if (
+    lowerQuestion.includes("defrost") ||
+    lowerQuestion.includes("steam") ||
+    lowerQuestion.includes("ice")
+  ) {
+    fetchedKnowledge = await searchHVACKnowledge("defrost");
   }
 
   // Build enhanced context with fetched knowledge
-  let context = buildMinimalContext(userQuestion, thermostatData, userSettings, userLocation);
-  
+  let context = await buildMinimalContext(
+    userQuestion,
+    thermostatData,
+    userSettings,
+    userLocation
+  );
+
   if (fetchedKnowledge?.success) {
     // Truncate knowledge to avoid token limits (keep first 500 chars)
     const knowledgeSnippet = fetchedKnowledge.content.substring(0, 500);
@@ -679,44 +1664,96 @@ export async function answerWithRAG(
 
   // Now answer with the augmented context
   const messages = [
-    { role: 'system', content: MINIMAL_SYSTEM_PROMPT },
+    { role: "system", content: MINIMAL_SYSTEM_PROMPT },
     {
-      role: 'user',
+      role: "user",
       content: `${context}\n\nUser question: ${userQuestion}`,
     },
   ];
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages,
-        temperature: 0.7,
-        max_tokens: 300,
-      }),
-    });
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages,
+          temperature: 0.7,
+          max_tokens: 800,
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 429) {
-        return { error: true, message: 'Rate limit exceeded. Please wait a moment and try again.' };
+        return {
+          error: true,
+          message: "Rate limit exceeded. Please wait a moment and try again.",
+        };
       }
-      return { error: true, message: `Groq request failed: ${errorData.error?.message || response.statusText}` };
+      
+      // Handle 401 Unauthorized - Invalid API Key
+      if (response.status === 401) {
+        return {
+          error: true,
+          message: "Invalid API Key",
+          needsApiKey: true,
+        };
+      }
+      
+      // Check error message for API key issues
+      const errorMessage = errorData.error?.message || response.statusText;
+      const isApiKeyError = errorMessage.toLowerCase().includes("api key") || 
+                           errorMessage.toLowerCase().includes("invalid api key") ||
+                           errorMessage.toLowerCase().includes("authentication");
+      
+      if (isApiKeyError) {
+        return {
+          error: true,
+          message: "Invalid API Key",
+          needsApiKey: true,
+        };
+      }
+      
+      return {
+        error: true,
+        message: `Groq request failed: ${errorMessage}`,
+      };
     }
 
     const data = await response.json();
-    const answer = data.choices?.[0]?.message?.content;
+    const choice = data.choices?.[0];
+    const answer = choice?.message?.content;
+    const finishReason = choice?.finish_reason;
+
+    // Check if response was truncated
+    let finalAnswer = answer;
+    if (finishReason === "length") {
+      // Response was cut off due to token limit
+      const lastSentenceEnd = Math.max(
+        finalAnswer.lastIndexOf("."),
+        finalAnswer.lastIndexOf("!"),
+        finalAnswer.lastIndexOf("?")
+      );
+      if (lastSentenceEnd > finalAnswer.length - 50) {
+        finalAnswer = finalAnswer.substring(0, lastSentenceEnd + 1);
+      }
+      finalAnswer +=
+        "\n\n[Response was truncated. Please ask a more specific question for a complete answer.]";
+    }
 
     return {
       success: true,
-      message: answer,
+      message: finalAnswer,
       tokensUsed: data.usage?.total_tokens,
       usedRAG: !!fetchedKnowledge?.success,
+      wasTruncated: finishReason === "length",
     };
   } catch (error) {
     return { error: true, message: `Request failed: ${error.message}` };
@@ -727,10 +1764,13 @@ export async function answerWithRAG(
  * Proactive monitoring - checks system health and alerts user
  * Call this periodically (e.g., every hour) to detect issues
  */
-export async function checkProactiveAlerts(thermostatData = null, userSettings = null) {
+export async function checkProactiveAlerts(
+  thermostatData = null,
+  userSettings = null
+) {
   const alerts = new ProactiveAlerts();
   const issues = await alerts.checkSystem();
-  
+
   return {
     hasAlerts: issues.length > 0,
     alerts: issues,
@@ -745,7 +1785,7 @@ export async function checkProactiveAlerts(thermostatData = null, userSettings =
 export async function generateDailyBriefing() {
   const briefing = new DailyBriefing();
   const summary = await briefing.generateBriefing();
-  
+
   return {
     success: true,
     briefing: summary,
@@ -775,7 +1815,7 @@ export async function askJouleFallback(
     userSettings,
     userLocation,
     conversationHistory,
-    { mode: 'simple' }
+    { mode: "simple" }
   );
 }
 
@@ -783,37 +1823,40 @@ export async function askJouleFallback(
  * Format briefing as user-friendly message
  */
 function formatBriefingMessage(summary) {
-  const { energyUsage, systemHealth, weather, recommendations } = summary.summary;
-  
+  const { energyUsage, systemHealth, weather, recommendations } =
+    summary.summary;
+
   let message = `Good morning! Here's your daily briefing:\n\n`;
-  
+
   // Energy usage
   message += `📊 **Yesterday's Energy Usage:**\n`;
   message += `• Compressor: ${energyUsage.compressorMinutes} minutes\n`;
   message += `• Aux heat: ${energyUsage.auxMinutes} minutes\n`;
   message += `• Total: ${energyUsage.totalKwh} kWh ($${energyUsage.cost})\n\n`;
-  
+
   // System health
-  message += `🏥 **System Health:** ${systemHealth.status === 'normal' ? '✅ All good' : '⚠️ Issues detected'}\n`;
+  message += `🏥 **System Health:** ${
+    systemHealth.status === "normal" ? "✅ All good" : "⚠️ Issues detected"
+  }\n`;
   if (systemHealth.issues.length > 0) {
-    message += systemHealth.issues.map(issue => `• ${issue}`).join('\n') + '\n\n';
+    message +=
+      systemHealth.issues.map((issue) => `• ${issue}`).join("\n") + "\n\n";
   }
-  
+
   // Weather
   if (weather) {
     message += `🌤️ **Weather:** ${weather.today}\n`;
     message += `Tomorrow: ${weather.tomorrow}\n`;
     message += `${weather.impact}\n\n`;
   }
-  
+
   // Recommendations
   if (recommendations.length > 0) {
     message += `💡 **Recommendations:**\n`;
-    recommendations.forEach(rec => {
+    recommendations.forEach((rec) => {
       message += `• ${rec.message} (${rec.potentialSavings})\n`;
     });
   }
-  
+
   return message;
 }
-

@@ -1,0 +1,164 @@
+/**
+ * Demo Mode vs Live Mode State Management
+ *
+ * Default State (Demo Mode):
+ * - Checks localStorage for 'ecobeeRefreshToken' or 'ecobeeAccessToken'
+ * - If NULL: Loads demoData.json (fake optimized house data)
+ * - Shows banner: "Viewing Demo Data. Connect your Ecobee to see real stats."
+ *
+ * Live Mode:
+ * - User authenticates via Ecobee OAuth
+ * - App saves refresh_token to localStorage
+ * - Stops loading demoData.json, starts fetching from /api/ecobee
+ */
+
+/**
+ * Check if we're in demo mode (no Ecobee connection)
+ */
+export function isDemoMode() {
+  try {
+    const refreshToken = localStorage.getItem("ecobeeRefreshToken");
+    const accessToken = localStorage.getItem("ecobeeAccessToken");
+    const apiKey = localStorage.getItem("ecobeeApiKey");
+
+    // If we have a refresh token or valid access token + API key, we're in live mode
+    if (refreshToken || (accessToken && apiKey)) {
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.warn("Error checking demo mode:", error);
+    return true; // Default to demo mode on error
+  }
+}
+
+/**
+ * Load demo data from public/demoData.json
+ */
+export async function loadDemoData() {
+  try {
+    const response = await fetch("/demoData.json");
+    if (!response.ok) {
+      throw new Error(`Failed to load demo data: ${response.status}`);
+    }
+    const data = await response.json();
+    return {
+      ...data,
+      source: "demo",
+      isDemo: true,
+    };
+  } catch (error) {
+    console.error("Error loading demo data:", error);
+    // Return minimal demo data as fallback
+    return {
+      source: "demo",
+      isDemo: true,
+      thermostat: {
+        identifier: "demo-thermostat-001",
+        name: "Demo Home",
+        temperature: 72.0,
+        humidity: 45,
+        targetHeatTemp: 70,
+        targetCoolTemp: 74,
+        mode: "auto",
+        fanMode: "auto",
+        isAway: false,
+        equipmentStatus: "idle",
+      },
+      efficiency: {
+        heatLossFactor: 850,
+        efficiencyScore: 87,
+        monthlySavings: 42.5,
+        annualSavings: 510.0,
+        optimizationStatus: "optimal",
+      },
+    };
+  }
+}
+
+/**
+ * Check if ProStat Bridge is available on local network
+ * Scans for http://prostat.local
+ */
+export async function checkBridgePresence() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+
+  try {
+    await fetch("http://prostat.local/health", {
+      method: "GET",
+      signal: controller.signal,
+      mode: "no-cors", // CORS may fail, but we can detect network errors
+    });
+
+    return true; // If we get here, bridge is present
+  } catch (error) {
+    // Network error means bridge is not present or not reachable
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Check if user has Pro access
+ * - Bridge hardware presence (auto-unlock)
+ * - Pro code validation
+ */
+export async function hasProAccess() {
+  // First check for Bridge hardware
+  const bridgePresent = await checkBridgePresence();
+  if (bridgePresent) {
+    return { hasAccess: true, source: "bridge" };
+  }
+
+  // Then check for Pro code
+  try {
+    const proCode = localStorage.getItem("proCode");
+    if (proCode) {
+      // Simple validation - for MVP, just check if it exists
+      // In production, this would validate against a server
+      const validCodes = [
+        "PRO-7734",
+        "PRO-2024",
+        "PRO-DEMO",
+        // Add more codes as needed
+      ];
+
+      if (validCodes.includes(proCode.toUpperCase())) {
+        return { hasAccess: true, source: "code" };
+      }
+    }
+  } catch (error) {
+    console.warn("Error checking Pro access:", error);
+  }
+
+  return { hasAccess: false, source: null };
+}
+
+/**
+ * Set Pro code
+ */
+export function setProCode(code) {
+  try {
+    localStorage.setItem("proCode", code.toUpperCase().trim());
+    return true;
+  } catch (error) {
+    console.error("Error setting Pro code:", error);
+    return false;
+  }
+}
+
+/**
+ * Clear Pro code
+ */
+export function clearProCode() {
+  try {
+    localStorage.removeItem("proCode");
+    return true;
+  } catch (error) {
+    console.error("Error clearing Pro code:", error);
+    return false;
+  }
+}

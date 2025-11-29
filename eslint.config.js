@@ -3,41 +3,17 @@ import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import importPlugin from "eslint-plugin-import";
+import { defineConfig, globalIgnores } from "eslint/config";
 
-export default [
-  // Global ignores
-  {
-    ignores: [
-      "dist/",
-      "build/",
-      "android/",
-      "ios/",
-      "node_modules/",
-      "coverage/",
-      ".nyc_output/",
-      "*.backup.jsx",
-      "*_backup.jsx",
-      "tmp*.jsx",
-      "*.tmp",
-      "vite.config.js.timestamp-*",
-      ".eslintrc.cjs",
-      "src/pages/Settings.refactored.jsx",
-      "src/pages/Home_backup.jsx",
-      "src/setupTests.js",
-      "src/test/testHelpers.js",
-      "global-teardown.js",
-      "global-setup.js",
-    ],
-  },
-  // Base recommended configs
-  js.configs.recommended,
-  // React Hooks config
-  reactHooks.configs["recommended-latest"],
-  // React Refresh config
-  reactRefresh.configs.vite,
-  // Main file config
+export default defineConfig([
+  globalIgnores(["dist", "android/**"]),
   {
     files: ["**/*.{js,jsx}"],
+    extends: [
+      js.configs.recommended,
+      reactHooks.configs["recommended-latest"],
+      reactRefresh.configs.vite,
+    ],
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
@@ -94,4 +70,4 @@ export default [
     files: ["test-*.js", "test-*.cjs", "test-*.mjs"],
     languageOptions: { globals: globals.node },
   },
-];
+]);

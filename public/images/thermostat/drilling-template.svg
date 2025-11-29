@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="250mm" height="240mm" viewBox="0 0 250 240">
+  <style>
+    /* Dark Mode Aesthetic matching the reference image */
+    .background { fill: #1e1e1e; }
+    .text-main { font-family: 'Courier New', monospace; fill: #e0e0e0; font-size: 8px; font-weight: bold; }
+    .text-label { font-family: 'Courier New', monospace; fill: #ffffff; font-size: 6px; }
+    .text-dim { font-family: 'Courier New', monospace; fill: #aaaaaa; font-size: 5px; }
+    .line-dashed { fill: none; stroke: #e0e0e0; stroke-width: 0.5; stroke-dasharray: 2, 2; }
+    .hole { fill: #ffffff; }
+    .dim-line { stroke: #e0e0e0; stroke-width: 0.3; }
+  </style>
+
+  <!-- Dark Background -->
+  <rect width="100%" height="100%" class="background" />
+
+  <!-- Title -->
+  <text x="10" y="15" class="text-main">### 3.2 Drilling Template</text>
+  <text x="10" y="25" class="text-dim">```</text>
+
+  <!-- MAIN TEMPLATE GROUP (Centered horizontally roughly) -->
+  <!-- 8.5 inches = 216mm approx width -->
+  <!-- Assuming 200mm height based on previous context, or generic aspect ratio -->
+  <g transform="translate(17, 35)">
+    
+    <!-- Outer Dashed Boundary -->
+    <rect x="0" y="0" width="216" height="200" class="line-dashed" />
+
+    <!-- 0.5 inch = 12.7mm offsets -->
+    
+    <!-- Top Left Hole & Label -->
+    <circle cx="12.7" cy="12.7" r="1.5" class="hole" />
+    <text x="16" y="20" class="text-label">(0.5", 0.5")</text>
+
+    <!-- Top Right Hole & Label -->
+    <circle cx="203.3" cy="12.7" r="1.5" class="hole" />
+    <text x="155" y="20" class="text-label">(0.5", 0.5")</text>
+    <!-- Dimension marker visual -->
+    <line x1="216" y1="12.7" x2="220" y2="12.7" class="dim-line" />
+    <line x1="220" y1="8" x2="220" y2="17" class="dim-line" />
+
+    <!-- Bottom Left Hole & Label -->
+    <circle cx="12.7" cy="187.3" r="1.5" class="hole" />
+    <text x="16" y="180" class="text-label">(0.5", 0.5")</text>
+
+    <!-- Bottom Right Hole & Label -->
+    <circle cx="203.3" cy="187.3" r="1.5" class="hole" />
+    <text x="155" y="180" class="text-label">(0.5", 0.5")</text>
+    <!-- Dimension marker visual -->
+    <line x1="216" y1="187.3" x2="220" y2="187.3" class="dim-line" />
+    <line x1="220" y1="182" x2="220" y2="192" class="dim-line" />
+
+  </g>
+
+  <!-- Bottom Width Label -->
+  <!-- Visual markers for width -->
+  <line x1="17" y1="240" x2="17" y2="245" class="dim-line" transform="translate(0, -5)" />
+  <line x1="233" y1="240" x2="233" y2="245" class="dim-line" transform="translate(0, -5)" />
+  
+  <text x="125" y="245" text-anchor="middle" class="text-main">8.5" (216mm) Width</text>
+  <text x="10" y="255" class="text-dim">```</text>
+
+</svg>

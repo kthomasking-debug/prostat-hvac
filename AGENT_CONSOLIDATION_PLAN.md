@@ -5,28 +5,33 @@
 You have **5 overlapping LLM/Agent systems** that need consolidation:
 
 ### 1. **`groqIntegration.js`** - `askJouleFallback()`
+
 - **Status**: ❌ **UNUSED** (imported but never called)
 - **Purpose**: Simple fallback for when parser can't understand
 - **Location**: `src/lib/groqIntegration.js`
 
 ### 2. **`groqAgent.js`** - `answerWithAgent()`
+
 - **Status**: ✅ **ACTIVELY USED** (called in `fetchGroqLLM()`)
 - **Purpose**: Agentic system with tools ("small brain, big tools" architecture)
 - **Features**: Tool-based, conversation memory, proactive alerts
 - **Location**: `src/lib/groqAgent.js`
 
 ### 3. **`JouleAgentCore.js`** - Full agentic system
+
 - **Status**: ✅ **ACTIVELY USED** (via `useJouleAgent` hook)
 - **Purpose**: Full agentic system with planning, reasoning, chain-of-thought
 - **Features**: Multi-step planning, error recovery, proactive suggestions
 - **Location**: `src/agents/JouleAgentCore.js`
 
 ### 4. **`agenticCommands.js`** - `JouleAgent` class
+
 - **Status**: ❌ **UNUSED** (imported but never called)
 - **Purpose**: Command router for multi-tool orchestration
 - **Location**: `src/utils/agenticCommands.js`
 
 ### 5. **`useProactiveAgent.js`** - Proactive features
+
 - **Status**: ✅ **ACTIVELY USED** (for alerts/briefings)
 - **Purpose**: Background monitoring, alerts, daily briefings
 - **Note**: This is a **separate concern** (not an LLM agent) - should stay
@@ -75,12 +80,13 @@ User Query
 ### Implementation:
 
 1. Enhance `answerWithAgent()` to support both modes:
+
    ```javascript
    answerWithAgent(query, apiKey, {
-     mode: 'simple' | 'advanced',  // simple = current, advanced = planning
+     mode: "simple" | "advanced", // simple = current, advanced = planning
      enablePlanning: boolean,
-     maxSteps: number
-   })
+     maxSteps: number,
+   });
    ```
 
 2. Move planning logic from `JouleAgentCore` into `groqAgent.js`
@@ -125,4 +131,3 @@ User Query
 - [ ] Delete unused files
 - [ ] Update tests
 - [ ] Update documentation
-

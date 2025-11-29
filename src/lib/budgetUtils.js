@@ -14,9 +14,9 @@ export const TYPICAL_CDD = {
   7: 450,
   8: 400,
   9: 250,
- 10: 60,
- 11: 10,
- 12: 0,
+  10: 60,
+  11: 10,
+  12: 0,
 };
 
 // Typical HDD entries for heating months (degree-days per month), simplified
@@ -30,13 +30,21 @@ export const TYPICAL_HDD = {
   7: 0,
   8: 0,
   9: 20,
- 10: 200,
- 11: 500,
- 12: 1100,
+  10: 200,
+  11: 500,
+  12: 1100,
 };
 
 // Map capacity (kBTU) to tons
-export const TONS_MAP = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+export const TONS_MAP = {
+  18: 1.5,
+  24: 2.0,
+  30: 2.5,
+  36: 3.0,
+  42: 3.5,
+  48: 4.0,
+  60: 5.0,
+};
 
 /**
  * Estimate monthly cooling cost from a CDD (Cooling Degree Days) value.
@@ -55,7 +63,13 @@ export function estimateMonthlyCoolingCostFromCDD({
 }) {
   const tons = TONS_MAP[capacity] || TONS_MAP[36] || 3.0;
   const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
-  const designHeatGain = squareFeet * BASE_COOLING_LOAD_FACTOR * insulationLevel * homeShape * ceilingMultiplier * solarExposure; // BTU/hr
+  const designHeatGain =
+    squareFeet *
+    BASE_COOLING_LOAD_FACTOR *
+    insulationLevel *
+    homeShape *
+    ceilingMultiplier *
+    solarExposure; // BTU/hr
   const btuGainPerDegF = designHeatGain / 20; // Use representative ΔT baseline 20°F
 
   // Degree-days -> degree-hours
@@ -69,7 +83,7 @@ export function estimateMonthlyCoolingCostFromCDD({
     cost: estimatedCost,
     energy: estimatedKWh,
     days: 30,
-    method: 'CDD',
+    method: "CDD",
     cdd,
     electricityRate,
     seer2,
@@ -84,18 +98,25 @@ export function estimateMonthlyCoolingCostFromCDD({
  * This is a conservative approximation using the 'TYPICAL_CDD' map.
  */
 export function estimateAnnualCoolingCostFromTypicalCDD(settings = {}) {
-  const months = Object.keys(TYPICAL_CDD).map(m => Number(m));
+  const months = Object.keys(TYPICAL_CDD).map((m) => Number(m));
   let totalCost = 0;
   let totalEnergy = 0;
-  months.forEach(month => {
+  months.forEach((month) => {
     const cdd = TYPICAL_CDD[month] || 0;
     if (!cdd || cdd <= 0) return; // Skip months with no cooling demand
-    const { cost, energy } = estimateMonthlyCoolingCostFromCDD({ cdd, ...settings });
+    const { cost, energy } = estimateMonthlyCoolingCostFromCDD({
+      cdd,
+      ...settings,
+    });
     totalCost += cost;
     totalEnergy += energy;
   });
 
-  return { cost: totalCost, energy: totalEnergy, monthsCounted: months.filter(m=> (TYPICAL_CDD[m]||0)>0).length };
+  return {
+    cost: totalCost,
+    energy: totalEnergy,
+    monthsCounted: months.filter((m) => (TYPICAL_CDD[m] || 0) > 0).length,
+  };
 }
 
 /**
@@ -109,18 +130,24 @@ export function estimateAnnualCostFromMonthlyTypical(settings = {}) {
   let totalCoolingCost = 0;
   let totalEnergy = 0;
 
-  months.forEach(month => {
+  months.forEach((month) => {
     const cdd = TYPICAL_CDD[month] || 0;
     const hdd = TYPICAL_HDD[month] || 0;
 
     if (cdd > 0) {
-      const monthlyCooling = estimateMonthlyCoolingCostFromCDD({ cdd, ...settings });
+      const monthlyCooling = estimateMonthlyCoolingCostFromCDD({
+        cdd,
+        ...settings,
+      });
       totalCoolingCost += monthlyCooling?.cost || 0;
       totalEnergy += monthlyCooling?.energy || 0;
     }
 
     if (hdd > 0) {
-      const monthlyHeating = estimateMonthlyHeatingCostFromHDD({ hdd, ...settings });
+      const monthlyHeating = estimateMonthlyHeatingCostFromHDD({
+        hdd,
+        ...settings,
+      });
       totalHeatingCost += monthlyHeating?.cost || 0;
       totalEnergy += monthlyHeating?.energy || 0;
     }
@@ -149,19 +176,26 @@ export function estimateMonthlyHeatingCostFromHDD({
   electricityRate = 0.15,
 } = {}) {
   const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
-  const estimatedDesignHeatLoss = squareFeet * BASE_BTU_PER_SQFT * insulationLevel * homeShape * ceilingMultiplier;
+  const estimatedDesignHeatLoss =
+    squareFeet *
+    BASE_BTU_PER_SQFT *
+    insulationLevel *
+    homeShape *
+    ceilingMultiplier;
   const btuLossPerDegF = estimatedDesignHeatLoss / 70; // consistent with planner's design temp diff
 
-  // Convert monthly HDD (degree-days) to kWh equivalent using HSPF, consistent with monthly logic
+  // Convert monthly HDD (degree-days) to kWh equivalent using HSPF
+  // HSPF is BTU/Wh, so kWh = BTU / (HSPF * 1000)
   const degreeHours = hdd * 24;
-  const estimatedEnergy = ((degreeHours) * btuLossPerDegF) / BTU_PER_KWH / Math.max(0.1, hspf);
+  const totalBtu = degreeHours * btuLossPerDegF;
+  const estimatedEnergy = totalBtu / (Math.max(0.1, hspf) * 1000);
   const estimatedCost = estimatedEnergy * electricityRate;
 
   return {
     cost: estimatedCost,
     energy: estimatedEnergy,
     days: 30,
-    method: 'HDD',
+    method: "HDD",
     hdd,
     electricityRate,
   };

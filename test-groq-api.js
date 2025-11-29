@@ -1,6 +1,5 @@
 // Test script to verify Groq API key and check available models
-// Replace with your own Groq API key from https://console.groq.com/
-const API_KEY = "YOUR_GROQ_API_KEY_HERE";
+const API_KEY = "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";
 
 async function testGroqAPI() {
   console.log("Testing Groq API...\n");

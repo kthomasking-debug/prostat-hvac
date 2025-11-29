@@ -1,0 +1,20 @@
+[Unit]
+Description=Asthma Shield BMS - Closed-Loop Building Management System
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/prostat-bridge
+Environment="ECOBEE_DEVICE_ID=XX:XX:XX:XX:XX:XX"
+Environment="BLUEAIR_USERNAME=your-email@example.com"
+Environment="BLUEAIR_PASSWORD=your-password"
+ExecStart=/usr/bin/python3 /home/pi/prostat-bridge/asthma_shield.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

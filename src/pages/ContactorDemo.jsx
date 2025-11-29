@@ -114,7 +114,7 @@ export default function ContactorDemo() {
   // Polling interval to update protection status
   // Note: Using a counter state to force re-renders instead of setState(prev => prev)
   // which can cause issues in some React versions
-   
+
   const [, setProtectionUpdateCounter] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => {

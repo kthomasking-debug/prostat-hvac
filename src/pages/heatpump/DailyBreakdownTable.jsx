@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronUp, ChevronDown, HelpCircle } from 'lucide-react';
+import { ChevronUp, ChevronDown, HelpCircle, Home, Plane } from 'lucide-react';
 
-const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAux' }) => {
+const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAux', awayModeDays = new Set(), onToggleAwayMode = null }) => {
     const [isMobile, setIsMobile] = useState(false);
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
     const [tooltip, setTooltip] = useState(null);
@@ -142,12 +142,31 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                     const displayIndoor = viewMode === 'withAux' ? (day.minIndoorTemp ?? indoorTemp) : (day.minNoAuxIndoorTemp ?? indoorTemp);
                     const isBelowSetpoint = displayIndoor < indoorTemp;
                     const displayCost = viewMode === 'withAux' ? (day.costWithAux ?? day.cost) : day.cost;
+                    
+                    // Use dayDateString from summary if available
+                    const dayDateString = day.dayDateString || null;
+                    const isAwayMode = dayDateString && awayModeDays.has(dayDateString);
 
                     return (
-                        <div key={day.day} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                        <div key={day.day} className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 ${isAwayMode ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}`}>
                             <div className="flex items-center justify-between mb-3 pb-2 border-b dark:border-gray-700">
                                 <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{day.day}</span>
-                                <span className="text-xl font-bold text-green-600 dark:text-green-400">${displayCost.toFixed(2)}</span>
+                                <div className="flex items-center gap-2">
+                                    {onToggleAwayMode && (
+                                        <button
+                                            onClick={() => dayDateString && onToggleAwayMode(dayDateString)}
+                                            className={`px-2 py-1 rounded-md font-semibold text-xs transition-all ${
+                                                isAwayMode
+                                                    ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                                                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+                                            }`}
+                                            title={isAwayMode ? 'Click to disable away mode' : 'Click to enable away mode'}
+                                        >
+                                            {isAwayMode ? <Plane size={12} /> : <Home size={12} />}
+                                        </button>
+                                    )}
+                                    <span className="text-xl font-bold text-green-600 dark:text-green-400">${displayCost.toFixed(2)}</span>
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
@@ -309,6 +328,24 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                                 </div>
                             )}
                         </th>
+                        {onToggleAwayMode && (
+                            <th className="p-3 font-semibold text-gray-900 dark:text-gray-100 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                    Away Mode
+                                    <HelpCircle
+                                        size={14}
+                                        className="text-gray-400 hover:text-blue-600 cursor-help"
+                                        onMouseEnter={() => setTooltip('awayMode')}
+                                        onMouseLeave={() => setTooltip(null)}
+                                    />
+                                </div>
+                                {tooltip === 'awayMode' && (
+                                    <div className="absolute z-10 bg-gray-900 text-white text-xs rounded p-2 shadow-lg w-56 top-full right-0 mt-1">
+                                        Click to toggle away mode for this day. Away mode uses energy-saving temperatures (62°F heating, 85°F cooling).
+                                    </div>
+                                )}
+                            </th>
+                        )}
                     </tr>
                 </thead>
                 <tbody>
@@ -316,11 +353,15 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                         const displayIndoor = viewMode === 'withAux' ? (day.minIndoorTemp ?? indoorTemp) : (day.minNoAuxIndoorTemp ?? indoorTemp);
                         const isBelowSetpoint = displayIndoor < indoorTemp;
                         const displayCost = viewMode === 'withAux' ? (day.costWithAux ?? day.cost) : day.cost;
+                        
+                        // Use dayDateString from summary if available, otherwise parse from day string
+                        const dayDateString = day.dayDateString || null;
+                        const isAwayMode = dayDateString && awayModeDays.has(dayDateString);
 
                         return (
                             <tr
                                 key={day.day}
-                                className={`even:bg-white odd:bg-gray-50 dark:even:bg-gray-800 dark:odd:bg-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900 transition-colors`}
+                                className={`even:bg-white odd:bg-gray-50 dark:even:bg-gray-800 dark:odd:bg-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900 transition-colors ${isAwayMode ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}`}
                             >
                                 <td className="p-3 font-semibold text-gray-900 dark:text-gray-100">{day.day}</td>
                                 <td className="p-3">
@@ -343,6 +384,31 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                                 >
                                     <span className="text-lg font-bold text-green-700 dark:text-green-400">${displayCost.toFixed(2)}</span>
                                 </td>
+                                {onToggleAwayMode && (
+                                    <td className="p-3 text-center">
+                                        <button
+                                            onClick={() => dayDateString && onToggleAwayMode(dayDateString)}
+                                            className={`px-3 py-1.5 rounded-md font-semibold text-sm transition-all ${
+                                                isAwayMode
+                                                    ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                                                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+                                            }`}
+                                            title={isAwayMode ? 'Click to disable away mode' : 'Click to enable away mode'}
+                                        >
+                                            {isAwayMode ? (
+                                                <div className="flex items-center gap-1">
+                                                    <Plane size={14} />
+                                                    <span>Away</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1">
+                                                    <Home size={14} />
+                                                    <span>Home</span>
+                                                </div>
+                                            )}
+                                        </button>
+                                    </td>
+                                )}
                             </tr>
                         );
                     })}
