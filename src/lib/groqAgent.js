@@ -1327,8 +1327,11 @@ async function buildMinimalContext(
         context += `\n⚠️ IMPORTANT: If the user asks about current or upcoming weather, remind them this forecast is ${forecastData.ageInDays} days old and they should run a new forecast for accurate data.\n`;
       }
       context += `═══════════════════════════════════════════════════════════════\n`;
+    } else if (forecastData && forecastData.dailySummary && forecastData.dailySummary.length === 0) {
+      context += `\n\n7-Day Forecast Data: Available but contains no daily data. The forecast may be incomplete. Run a new forecast on the 7-Day Cost Forecaster page.\n`;
     } else {
       context += `\n\n7-Day Forecast Data: Not available. Run a forecast on the 7-Day Cost Forecaster page to see temperature predictions.\n`;
+      context += `Note: For monthly forecasts (30-day range), use the Monthly Budget Planner page. Monthly forecast data is not currently accessible to Ask Joule.\n`;
     }
   }
 
