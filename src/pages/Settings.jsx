@@ -42,6 +42,7 @@ import ThermostatSettingsPanel from "../components/ThermostatSettingsPanel";
 import EcobeeSettings from "../components/EcobeeSettings";
 import ProstatBridgeSettings from "../components/ProstatBridgeSettings";
 import { setProCode, clearProCode, hasProAccess } from "../utils/demoMode";
+import { Plus, Trash2, Edit2 } from "lucide-react";
 
 const Section = ({ title, icon, children, ...props }) => (
   <div
@@ -300,6 +301,218 @@ const VoiceListenDurationInput = () => {
         (How long voice input listens before auto-stopping)
       </p>
     </div>
+  );
+};
+
+// Zone Management Component
+const ZoneManagementSection = ({ setToast }) => {
+  const [zones, setZones] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("zones") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [activeZoneId, setActiveZoneId] = useState(() => {
+    try {
+      return localStorage.getItem("activeZoneId") || (zones.length > 0 ? zones[0].id : "zone1");
+    } catch {
+      return "zone1";
+    }
+  });
+  const [editingZone, setEditingZone] = useState(null);
+
+  // Initialize default zone if empty
+  useEffect(() => {
+    if (zones.length === 0) {
+      const defaultZone = {
+        id: "zone1",
+        name: "Main Zone",
+        squareFeet: 1500,
+        insulationLevel: 1.0,
+        primarySystem: "heatPump",
+        capacity: 36,
+        hasCSV: false,
+      };
+      setZones([defaultZone]);
+      localStorage.setItem("zones", JSON.stringify([defaultZone]));
+      localStorage.setItem("activeZoneId", defaultZone.id);
+    }
+  }, []);
+
+  const addZone = () => {
+    const newZone = {
+      id: `zone${zones.length + 1}`,
+      name: `Zone ${zones.length + 1}`,
+      squareFeet: 1000,
+      insulationLevel: 1.0,
+      primarySystem: "heatPump",
+      capacity: 24,
+      hasCSV: false,
+    };
+    const updatedZones = [...zones, newZone];
+    setZones(updatedZones);
+    localStorage.setItem("zones", JSON.stringify(updatedZones));
+  };
+
+  const removeZone = (zoneId) => {
+    if (zones.length <= 1) {
+      setToast?.({ message: "You must have at least one zone", type: "error" });
+      return;
+    }
+    const updatedZones = zones.filter(z => z.id !== zoneId);
+    setZones(updatedZones);
+    localStorage.setItem("zones", JSON.stringify(updatedZones));
+    
+    // Clean up zone-specific localStorage data
+    const keysToRemove = [
+      'spa_resultsHistory',
+      'spa_parsedCsvData',
+      'spa_labels',
+      'spa_diagnostics',
+      'spa_filename',
+      'spa_uploadTimestamp'
+    ];
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(`${key}_${zoneId}`);
+    });
+    
+    // Switch to first zone if active zone was deleted
+    if (activeZoneId === zoneId && updatedZones.length > 0) {
+      setActiveZoneId(updatedZones[0].id);
+      localStorage.setItem("activeZoneId", updatedZones[0].id);
+    }
+  };
+
+  const updateZone = (zoneId, updates) => {
+    const updatedZones = zones.map(z => 
+      z.id === zoneId ? { ...z, ...updates } : z
+    );
+    setZones(updatedZones);
+    localStorage.setItem("zones", JSON.stringify(updatedZones));
+    setEditingZone(null);
+  };
+
+  const checkZoneHasCSV = (zoneId) => {
+    try {
+      const hasData = localStorage.getItem(`spa_parsedCsvData_${zoneId}`);
+      return !!hasData;
+    } catch {
+      return false;
+    }
+  };
+
+  // Update hasCSV flags
+  useEffect(() => {
+    const updatedZones = zones.map(z => ({
+      ...z,
+      hasCSV: checkZoneHasCSV(z.id)
+    }));
+    if (JSON.stringify(updatedZones) !== JSON.stringify(zones)) {
+      setZones(updatedZones);
+      localStorage.setItem("zones", JSON.stringify(updatedZones));
+    }
+  }, []);
+
+  return (
+    <Section title="Zone Management" icon={<Home size={20} />}>
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Manage multiple thermostats/zones. Each zone can have its own CSV data upload and analysis.
+        </p>
+        
+        <div className="space-y-3">
+          {zones.map((zone) => (
+            <div
+              key={zone.id}
+              className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800/50"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                    {editingZone?.id === zone.id ? (
+                      <input
+                        type="text"
+                        value={editingZone.name}
+                        onChange={(e) => setEditingZone({ ...editingZone, name: e.target.value })}
+                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-gray-100"
+                        onBlur={() => {
+                          if (editingZone.name.trim()) {
+                            updateZone(zone.id, { name: editingZone.name.trim() });
+                          } else {
+                            setEditingZone(null);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            if (editingZone.name.trim()) {
+                              updateZone(zone.id, { name: editingZone.name.trim() });
+                            }
+                          } else if (e.key === "Escape") {
+                            setEditingZone(null);
+                          }
+                        }}
+                        autoFocus
+                      />
+                    ) : (
+                      <>
+                        {zone.name}
+                        {zone.id === activeZoneId && (
+                          <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded">
+                            Active
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  {zone.hasCSV && (
+                    <span className="text-xs text-green-600 dark:text-green-400">✓ CSV</span>
+                  )}
+                  <button
+                    onClick={() => setEditingZone({ ...zone })}
+                    className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+                    title="Edit zone name"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  {zones.length > 1 && (
+                    <button
+                      onClick={() => removeZone(zone.id)}
+                      className="p-1.5 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
+                      title="Remove zone"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-400">
+                <div>
+                  <span className="font-medium">Size:</span> {zone.squareFeet} sq ft
+                </div>
+                <div>
+                  <span className="font-medium">Capacity:</span> {zone.capacity || "N/A"} kBTU
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={addZone}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+        >
+          <Plus size={18} />
+          Add Zone / Thermostat
+        </button>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          💡 Tip: If you have multiple thermostats, create a zone for each. Upload CSV data for each zone separately in the System Performance Analyzer.
+        </p>
+      </div>
+    </Section>
   );
 };
 
@@ -1577,6 +1790,9 @@ const SettingsPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Zone Management */}
+      <ZoneManagementSection setToast={setToast} />
 
       <BuildingCharacteristics
         settings={userSettings}

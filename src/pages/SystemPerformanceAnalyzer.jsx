@@ -474,9 +474,50 @@ const ThermostatHelp = () => (
 );
 
 const SystemPerformanceAnalyzer = () => {
+  // Multi-zone support
+  const [zones, setZones] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("zones") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [activeZoneId, setActiveZoneId] = useState(() => {
+    try {
+      return localStorage.getItem("activeZoneId") || (zones.length > 0 ? zones[0].id : "zone1");
+    } catch {
+      return "zone1";
+    }
+  });
+  
+  // Initialize zones if empty (backwards compatibility)
+  React.useEffect(() => {
+    if (zones.length === 0) {
+      const defaultZone = {
+        id: "zone1",
+        name: "Main Zone",
+        squareFeet: userSettings?.squareFeet || 1500,
+        insulationLevel: userSettings?.insulationLevel || 1.0,
+        primarySystem: userSettings?.primarySystem || "heatPump",
+        capacity: userSettings?.capacity || 36,
+        hasCSV: false,
+      };
+      setZones([defaultZone]);
+      localStorage.setItem("zones", JSON.stringify([defaultZone]));
+      localStorage.setItem("activeZoneId", defaultZone.id);
+    }
+  }, []);
+  
+  const activeZone = zones.find(z => z.id === activeZoneId) || zones[0];
+  
+  // Zone-specific localStorage keys
+  const getZoneStorageKey = (key) => {
+    return `${key}_${activeZoneId}`;
+  };
+  
   // For labeling results
   const [labels, setLabels] = useState(() => {
-    const saved = localStorage.getItem('spa_labels');
+    const saved = localStorage.getItem(getZoneStorageKey('spa_labels'));
     return saved ? JSON.parse(saved) : [];
   });
   const { setHeatLossFactor, userSettings, setUserSetting } = useOutletContext();
@@ -485,14 +526,29 @@ const SystemPerformanceAnalyzer = () => {
   const [file, setFile] = useState(null);
   const [, setAnalysisResults] = useState(null);
   const [parsedCsvRows, setParsedCsvRows] = useState(() => {
-    const saved = localStorage.getItem('spa_parsedCsvData');
+    const saved = localStorage.getItem(getZoneStorageKey('spa_parsedCsvData'));
     return saved ? JSON.parse(saved) : null;
   });
   const [dataForAnalysisRows, setDataForAnalysisRows] = useState(null);
   const [resultsHistory, setResultsHistory] = useState(() => {
-    const saved = localStorage.getItem('spa_resultsHistory');
+    const saved = localStorage.getItem(getZoneStorageKey('spa_resultsHistory'));
     return saved ? JSON.parse(saved) : [];
   });
+  
+  // Update state when zone changes
+  React.useEffect(() => {
+    if (!activeZoneId) return;
+    const zoneKey = (key) => `${key}_${activeZoneId}`;
+    const savedLabels = localStorage.getItem(zoneKey('spa_labels'));
+    setLabels(savedLabels ? JSON.parse(savedLabels) : []);
+    const savedParsed = localStorage.getItem(zoneKey('spa_parsedCsvData'));
+    setParsedCsvRows(savedParsed ? JSON.parse(savedParsed) : null);
+    const savedHistory = localStorage.getItem(zoneKey('spa_resultsHistory'));
+    setResultsHistory(savedHistory ? JSON.parse(savedHistory) : []);
+    setFile(null);
+    setAnalysisResults(null);
+    setDataForAnalysisRows(null);
+  }, [activeZoneId]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
@@ -505,10 +561,10 @@ const SystemPerformanceAnalyzer = () => {
   const [showHeatLossTooltip, setShowHeatLossTooltip] = useState(false);
 
   const systemConfig = { 
-    capacity: 24, 
+    capacity: activeZone?.capacity || userSettings?.capacity || 24, 
     efficiency: 15, 
-    tons: 2.0,
-    squareFeet: userSettings?.squareFeet || 2000 // Add square feet for thermal mass estimation
+    tons: (activeZone?.capacity || userSettings?.capacity || 24) / 12,
+    squareFeet: activeZone?.squareFeet || userSettings?.squareFeet || 2000 // Add square feet for thermal mass estimation
   };
 
   const handleFileChange = (event) => {
@@ -618,28 +674,35 @@ const SystemPerformanceAnalyzer = () => {
           console.log(`analyzeThermostatData: sampled ${sampledData.length} rows at 15-min intervals (of ${data.length}) for faster analysis`);
         }
         
-        // Store parsed CSV data persistently
-        localStorage.setItem('spa_parsedCsvData', JSON.stringify(data));
-        localStorage.setItem('spa_uploadTimestamp', new Date().toISOString());
-        localStorage.setItem('spa_filename', file.name);
+        // Store parsed CSV data persistently (zone-specific)
+        localStorage.setItem(getZoneStorageKey('spa_parsedCsvData'), JSON.stringify(data));
+        localStorage.setItem(getZoneStorageKey('spa_uploadTimestamp'), new Date().toISOString());
+        localStorage.setItem(getZoneStorageKey('spa_filename'), file.name);
+        
+        // Update zone to mark it as having CSV data
+        const updatedZones = zones.map(z => 
+          z.id === activeZoneId ? { ...z, hasCSV: true } : z
+        );
+        setZones(updatedZones);
+        localStorage.setItem("zones", JSON.stringify(updatedZones));
         
         setParsedCsvRows(data);
         setDataForAnalysisRows(dataForAnalysis);
         const results = analyzeThermostatData(dataForAnalysis, systemConfig);
         setAnalysisResults(results);
         
-        // Run diagnostic analysis
+        // Run diagnostic analysis (zone-specific)
         const diagnostics = analyzeThermostatIssues(data);
-        localStorage.setItem('spa_diagnostics', JSON.stringify(diagnostics));
+        localStorage.setItem(getZoneStorageKey('spa_diagnostics'), JSON.stringify(diagnostics));
         
-        // Keep only the most recent result
+        // Keep only the most recent result (zone-specific)
         setResultsHistory([results]);
-        localStorage.setItem('spa_resultsHistory', JSON.stringify([results]));
+        localStorage.setItem(getZoneStorageKey('spa_resultsHistory'), JSON.stringify([results]));
         // Dispatch custom event so AskJoule can update immediately
         window.dispatchEvent(new CustomEvent('analyzerDataUpdated'));
-        // Add corresponding label - only keep one
+        // Add corresponding label - only keep one (zone-specific)
         setLabels(['Result 1']);
-        localStorage.setItem('spa_labels', JSON.stringify(['Result 1']));
+        localStorage.setItem(getZoneStorageKey('spa_labels'), JSON.stringify(['Result 1']));
         setHeatLossFactor(results.heatLossFactor);
         // ☦️ LOAD-BEARING: Also store in userSettings so it persists across page reloads
         // Why this exists: heatLossFactor in React state (App.jsx) doesn't persist. If user
@@ -710,13 +773,46 @@ const SystemPerformanceAnalyzer = () => {
         </div>
       </div>
 
+      {/* Zone Selector (if multiple zones) */}
+      {zones.length > 1 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 mb-6 border dark:border-gray-700">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Select Zone for CSV Upload
+          </label>
+          <select
+            value={activeZoneId}
+            onChange={(e) => {
+              setActiveZoneId(e.target.value);
+              localStorage.setItem("activeZoneId", e.target.value);
+            }}
+            className="w-full max-w-md p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-gray-100"
+          >
+            {zones.map(zone => (
+              <option key={zone.id} value={zone.id}>
+                {zone.name} {zone.hasCSV ? "✓" : ""}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+            {activeZone ? (
+              <>
+                {activeZone.name}: {activeZone.squareFeet} sq ft
+                {activeZone.hasCSV ? " • CSV data uploaded" : " • No CSV data yet"}
+              </>
+            ) : (
+              "Select a zone to upload CSV data for that specific area"
+            )}
+          </p>
+        </div>
+      )}
+
       {/* Upload Section */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border dark:border-gray-700">
         <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
           <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
             <Upload size={20} className="text-blue-600 dark:text-blue-400" />
           </div>
-          Upload Data File
+          Upload Data File {zones.length > 1 && activeZone && `(${activeZone.name})`}
         </h3>
         <div className="flex flex-wrap items-center gap-4">
           <input
@@ -1503,7 +1599,7 @@ const SystemPerformanceAnalyzer = () => {
                     const newLabels = [...labels];
                     newLabels[idx] = e.target.value;
                     setLabels(newLabels);
-                    localStorage.setItem('spa_labels', JSON.stringify(newLabels));
+                    localStorage.setItem(getZoneStorageKey('spa_labels'), JSON.stringify(newLabels));
                   }}
                   placeholder="Label this result (e.g., 'Before insulation upgrade')"
                   className={fullInputClasses}
@@ -1537,8 +1633,8 @@ const SystemPerformanceAnalyzer = () => {
                       onClick={() => {
                         setResultsHistory([]);
                         setLabels([]);
-                        localStorage.removeItem('spa_resultsHistory');
-                        localStorage.removeItem('spa_labels');
+                        localStorage.removeItem(getZoneStorageKey('spa_resultsHistory'));
+                        localStorage.removeItem(getZoneStorageKey('spa_labels'));
                       }}
                     >
                       Delete

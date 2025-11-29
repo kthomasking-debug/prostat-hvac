@@ -86,6 +86,16 @@ export default function Onboarding() {
   const defaultCapacity = userSettings.capacity || userSettings.coolingCapacity || 36; // 36 kBTU = 3 tons
   const defaultTons = defaultCapacity / 12;
   const [heatPumpTons, setHeatPumpTons] = useState(Math.round(defaultTons * 10) / 10); // Round to 1 decimal
+  
+  // Multi-zone support
+  const [numberOfThermostats, setNumberOfThermostats] = useState(() => {
+    try {
+      const zones = JSON.parse(localStorage.getItem("zones") || "[]");
+      return zones.length > 0 ? zones.length : 1;
+    } catch {
+      return 1;
+    }
+  });
 
   // Building details are now REQUIRED in all modes for Ask Joule to work properly
   const totalSteps = 4; // Always 4 steps: Welcome, Location, Building, Confirmation
@@ -249,6 +259,10 @@ export default function Onboarding() {
         setBuildingError("Please select an insulation quality");
         return;
       }
+      if (!numberOfThermostats || numberOfThermostats < 1) {
+        setBuildingError("Please select the number of thermostats");
+        return;
+      }
       
       // Save building settings using unified settings manager (for Ask Joule access)
       setSetting("squareFeet", squareFeet, { source: "onboarding" });
@@ -272,12 +286,37 @@ export default function Onboarding() {
           setUserSetting("coolingCapacity", capacityKBTU);
         }
       }
+      
+      // Initialize zones based on number of thermostats
+      try {
+        const existingZones = JSON.parse(localStorage.getItem("zones") || "[]");
+        if (existingZones.length === 0 || existingZones.length !== numberOfThermostats) {
+          // Create zones array
+          const zones = [];
+          for (let i = 0; i < numberOfThermostats; i++) {
+            zones.push({
+              id: `zone${i + 1}`,
+              name: numberOfThermostats === 1 ? "Main Zone" : i === 0 ? "Downstairs" : i === 1 ? "Upstairs" : `Zone ${i + 1}`,
+              squareFeet: numberOfThermostats === 1 ? squareFeet : Math.round(squareFeet / numberOfThermostats),
+              insulationLevel: insulationLevel,
+              primarySystem: primarySystem,
+              capacity: primarySystem === "heatPump" ? Math.round(heatPumpTons * 12) : null,
+              hasCSV: false,
+            });
+          }
+          localStorage.setItem("zones", JSON.stringify(zones));
+          localStorage.setItem("activeZoneId", zones[0].id); // Default to first zone
+        }
+      } catch (err) {
+        console.warn("Failed to initialize zones:", err);
+      }
+      
       setBuildingError(null); // Clear any errors
       setStep(STEPS.CONFIRMATION);
     } else if (step === STEPS.CONFIRMATION) {
       completeOnboarding();
     }
-  }, [step, mode, foundLocation, squareFeet, insulationLevel, primarySystem, heatPumpTons, setUserSetting]);
+  }, [step, mode, foundLocation, squareFeet, insulationLevel, primarySystem, heatPumpTons, numberOfThermostats, setUserSetting]);
 
   // Complete onboarding
   const completeOnboarding = useCallback(() => {
@@ -636,6 +675,30 @@ export default function Onboarding() {
                   </p>
                 </div>
               )}
+
+              {/* Number of Thermostats/Zones */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  How many thermostats do you have?
+                </label>
+                <select
+                  value={numberOfThermostats}
+                  onChange={(e) => setNumberOfThermostats(Number(e.target.value))}
+                  className={selectClasses}
+                >
+                  <option value={1}>1 thermostat (single zone)</option>
+                  <option value={2}>2 thermostats (multi-zone)</option>
+                  <option value={3}>3 thermostats (multi-zone)</option>
+                  <option value={4}>4+ thermostats (multi-zone)</option>
+                </select>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {numberOfThermostats > 1 ? (
+                    <span>You can configure each zone separately in Settings. Each zone can have its own CSV data upload.</span>
+                  ) : (
+                    <span>If you have multiple thermostats, select the correct number to enable multi-zone analysis.</span>
+                  )}
+                </p>
+              </div>
             </div>
 
             <div className="flex gap-3 justify-center mt-8">
@@ -700,6 +763,12 @@ export default function Onboarding() {
                     </span>
                   </div>
                 )}
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Thermostats/Zones</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                    {numberOfThermostats} {numberOfThermostats === 1 ? "zone" : "zones"}
+                  </span>
+                </div>
               </div>
             </div>
 

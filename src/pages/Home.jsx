@@ -51,7 +51,22 @@ const HomeDashboard = () => {
     () => safeParse("last_forecast_summary", null),
     []
   );
-  const resultsHistory = useMemo(() => safeParse("spa_resultsHistory", []), []);
+  // Multi-zone support: Check active zone or all zones
+  const resultsHistory = useMemo(() => {
+    try {
+      // Check for active zone first
+      const activeZoneId = localStorage.getItem("activeZoneId") || "zone1";
+      const zoneKey = `spa_resultsHistory_${activeZoneId}`;
+      const zoneHistory = safeParse(zoneKey, []);
+      if (zoneHistory && zoneHistory.length > 0) {
+        return zoneHistory;
+      }
+      // Fallback to legacy single-zone storage
+      return safeParse("spa_resultsHistory", []);
+    } catch {
+      return safeParse("spa_resultsHistory", []);
+    }
+  }, []);
   const latestAnalysis =
     resultsHistory && resultsHistory.length > 0
       ? resultsHistory[resultsHistory.length - 1]

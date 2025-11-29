@@ -411,41 +411,95 @@ export function getCSVDiagnosticsData() {
   }
 
   try {
-    // Get analysis results history from localStorage
-    const resultsHistory = localStorage.getItem("spa_resultsHistory");
-    const parsedCsvData = localStorage.getItem("spa_parsedCsvData");
-
+    // Multi-zone support: Check all zones for CSV data
+    let zones = [];
+    try {
+      zones = JSON.parse(localStorage.getItem("zones") || "[]");
+    } catch {
+      // Fallback to single zone
+      zones = [{ id: "zone1", name: "Main Zone" }];
+    }
+    
+    // If no zones, check legacy single-zone storage
+    if (zones.length === 0) {
+      zones = [{ id: "zone1", name: "Main Zone" }];
+    }
+    
     const diagnostics = {
       hasData: false,
       resultsHistory: null,
       parsedCsvData: null,
       latestAnalysis: null,
+      zones: [],
     };
-
-    if (resultsHistory) {
-      try {
-        diagnostics.resultsHistory = JSON.parse(resultsHistory);
-        diagnostics.hasData = true;
-
-        // Get the most recent analysis
-        if (
-          Array.isArray(diagnostics.resultsHistory) &&
-          diagnostics.resultsHistory.length > 0
-        ) {
-          diagnostics.latestAnalysis =
-            diagnostics.resultsHistory[diagnostics.resultsHistory.length - 1];
+    
+    // Check each zone for data
+    for (const zone of zones) {
+      const zoneKey = (key) => `${key}_${zone.id}`;
+      const resultsHistory = localStorage.getItem(zoneKey("spa_resultsHistory"));
+      const parsedCsvData = localStorage.getItem(zoneKey("spa_parsedCsvData"));
+      
+      let zoneData = null;
+      
+      if (resultsHistory) {
+        try {
+          const history = JSON.parse(resultsHistory);
+          if (Array.isArray(history) && history.length > 0) {
+            zoneData = {
+              zoneId: zone.id,
+              zoneName: zone.name,
+              resultsHistory: history,
+              latestAnalysis: history[history.length - 1],
+              parsedCsvData: parsedCsvData ? JSON.parse(parsedCsvData) : null,
+            };
+            diagnostics.hasData = true;
+            diagnostics.zones.push(zoneData);
+          }
+        } catch (e) {
+          console.warn(`Failed to parse spa_resultsHistory for ${zone.id}:`, e);
         }
-      } catch (e) {
-        console.warn("Failed to parse spa_resultsHistory:", e);
       }
     }
-
-    if (parsedCsvData) {
-      try {
-        diagnostics.parsedCsvData = JSON.parse(parsedCsvData);
-        diagnostics.hasData = true;
-      } catch (e) {
-        console.warn("Failed to parse spa_parsedCsvData:", e);
+    
+    // For backwards compatibility, also check legacy single-zone storage
+    if (!diagnostics.hasData) {
+      const resultsHistory = localStorage.getItem("spa_resultsHistory");
+      const parsedCsvData = localStorage.getItem("spa_parsedCsvData");
+      
+      if (resultsHistory) {
+        try {
+          diagnostics.resultsHistory = JSON.parse(resultsHistory);
+          diagnostics.hasData = true;
+          
+          if (
+            Array.isArray(diagnostics.resultsHistory) &&
+            diagnostics.resultsHistory.length > 0
+          ) {
+            diagnostics.latestAnalysis =
+              diagnostics.resultsHistory[diagnostics.resultsHistory.length - 1];
+          }
+        } catch (e) {
+          console.warn("Failed to parse spa_resultsHistory:", e);
+        }
+      }
+      
+      if (parsedCsvData) {
+        try {
+          diagnostics.parsedCsvData = JSON.parse(parsedCsvData);
+          diagnostics.hasData = true;
+        } catch (e) {
+          console.warn("Failed to parse spa_parsedCsvData:", e);
+        }
+      }
+    } else {
+      // Use the most recent analysis from any zone
+      const allAnalyses = diagnostics.zones
+        .filter(z => z.latestAnalysis)
+        .map(z => ({ ...z.latestAnalysis, zoneId: z.zoneId, zoneName: z.zoneName }));
+      
+      if (allAnalyses.length > 0) {
+        // Sort by timestamp if available, otherwise use first
+        diagnostics.latestAnalysis = allAnalyses[0];
       }
     }
 
