@@ -268,8 +268,11 @@ export function useSpeechSynthesis(options = {}) {
         // Replace negative numbers first (before range replacements)
         .replace(/-(\d+)/g, "negative $1") // Negative numbers: "-5" → "negative 5"
         // Replace dashes with "to" for ranges (after handling negative numbers)
+        // Only match actual ranges, not compound words like "larger-scale" or "multi-zone"
         .replace(/(\d+)\s*-\s*(\d+)/g, "$1 to $2") // Number ranges: "32-40" → "32 to 40"
-        .replace(/(\w+)\s*-\s*(\w+)/g, "$1 to $2") // Word ranges: "heating-cooling" → "heating to cooling"
+        // Word ranges: only match if both words are standalone (not compound adjectives)
+        // Match patterns like "heating-cooling" but not "larger-scale" or "multi-zone"
+        .replace(/\b(heating|cooling|winter|summer|day|night|morning|evening|high|low|warm|cold|hot|cool)\s*-\s*(heating|cooling|winter|summer|day|night|morning|evening|high|low|warm|cold|hot|cool)\b/gi, "$1 to $2") // Temperature/mode ranges
         .replace(/(\d+)\s*-\s*(\w+)/g, "$1 to $2") // Mixed: "70-heating" → "70 to heating"
         .replace(/(\w+)\s*-\s*(\d+)/g, "$1 to $2") // Mixed: "heating-70" → "heating to 70"
         .replace(/(\d+)\s*HSPF/gi, "$1 H S P F") // Handle HSPF with numbers (e.g., "9 HSPF")
