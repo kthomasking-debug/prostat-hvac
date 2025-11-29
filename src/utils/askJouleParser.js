@@ -107,6 +107,9 @@ function calculateOfflineAnswer(query, context = {}) {
   if (/what'?s?\s+(?:my\s+)?balance\s+point/i.test(query)) {
     return { action: "offlineAnswer", type: "balancePoint", needsContext: true };
   }
+  if (/(?:calculate|show|tell\s+me|what\s+is)\s+(?:my\s+)?balance\s+point/i.test(query)) {
+    return { action: "offlineAnswer", type: "balancePoint", needsContext: true };
+  }
   if (/how\s+much\s+did\s+i\s+spend\s+yesterday/i.test(query)) {
     return { action: "offlineAnswer", type: "yesterdayCost", needsContext: true };
   }
@@ -944,10 +947,17 @@ function parseCommandLocal(query, context = {}) {
   }
 
   // 3. Balance Point Analyzer / Energy Flow
+  // Only navigate if it's explicitly about viewing/opening the page, not calculating
   if (
-    /(?:balance\s*point|energy\s+flow|performance\s+graph|visualiz)/i.test(q)
+    /(?:open|show|go\s+to|view|see)\s+(?:the\s+)?(?:balance\s*point\s+)?(?:analyzer|page|graph|visualization)/i.test(q) ||
+    /(?:energy\s+flow|performance\s+graph|visualiz)/i.test(q)
   ) {
     return { action: "navigate", target: "balance" };
+  }
+  // If just "balance point" without calculate/show/open, check if it's a calculation request
+  if (/(?:balance\s*point)/i.test(q) && !/(?:calculate|show|tell\s+me|what\s+is)/i.test(q)) {
+    // Default to showing the answer, not navigating (unless explicitly asked to open page)
+    return { action: "offlineAnswer", type: "balancePoint", needsContext: true };
   }
 
   // 4. A/C Charging Calculator
