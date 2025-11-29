@@ -78,6 +78,7 @@ export function useAskJoule({
   const inputRef = useRef(null);
   const submitRef = useRef(null);
   const handleSubmitRef = useRef(null);
+  const valueClearedRef = useRef(false);
 
   // --- Hooks ---
   // Wake word detection enabled state
@@ -119,18 +120,14 @@ export function useAskJoule({
       if (!finalText) return;
       setValue(finalText);
       // Submit shortly after finalization - use ref to access handleSubmit
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           if (handleSubmitRef.current) {
-            handleSubmitRef.current(null, finalText);
+            await handleSubmitRef.current(null, finalText);
+            // Clear the input field after command executes so next voice command is fresh
+            valueClearedRef.current = true; // Flag that we're clearing to prevent transcript from repopulating
+            setValue("");
           }
-          // Ensure microphone stays on after command execution
-          // The recognition should continue listening due to autoStopOnFinal: false
-          // But restart if it stopped for any reason (check after a brief delay)
-          setTimeout(() => {
-            // Check if we should still be listening (user hasn't manually stopped)
-            // This will be handled by the continuous mode and autoRestart
-          }, 1000);
         } catch (err) {
           console.error("Error submitting voice command:", err);
         }
@@ -161,8 +158,19 @@ export function useAskJoule({
   });
 
   // Update input live while listening
+  // But don't overwrite if value was just cleared (wait a bit after clearing)
   useEffect(() => {
-    if (isListening && transcript) setValue(transcript);
+    if (isListening && transcript) {
+      // Only update if we haven't just cleared the value (give it a moment)
+      if (!valueClearedRef.current) {
+        setValue(transcript);
+      } else {
+        // Reset the flag after a short delay to allow new speech to populate
+        setTimeout(() => {
+          valueClearedRef.current = false;
+        }, 1000);
+      }
+    }
   }, [isListening, transcript]);
 
   // --- Suggestions Logic ---
