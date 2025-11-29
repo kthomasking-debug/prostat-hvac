@@ -77,6 +77,7 @@ export function useAskJoule({
   // Refs
   const inputRef = useRef(null);
   const submitRef = useRef(null);
+  const handleSubmitRef = useRef(null);
 
   // --- Hooks ---
   // Wake word detection enabled state
@@ -109,7 +110,7 @@ export function useAskJoule({
     continuous: true,
     autoRestart: true,
     maxAutoRestarts: 8,
-    autoStopOnFinal: true,
+    autoStopOnFinal: false, // Keep listening after command so user can give multiple commands
     // NOTE: We intentionally do NOT use onInterim to set value here.
     // The useEffect below (lines ~118-120) correctly syncs transcript -> value
     // whenever the transcript state changes. Using onInterim with a closure
@@ -117,13 +118,21 @@ export function useAskJoule({
     onFinal: (finalText) => {
       if (!finalText) return;
       setValue(finalText);
-      // Submit shortly after finalization
+      // Submit shortly after finalization - use ref to access handleSubmit
       setTimeout(() => {
         try {
-          if (submitRef.current)
-            submitRef.current({ preventDefault: () => {} });
-        } catch {
-          /* ignore submit failure */
+          if (handleSubmitRef.current) {
+            handleSubmitRef.current(null, finalText);
+          }
+          // Ensure microphone stays on after command execution
+          // The recognition should continue listening due to autoStopOnFinal: false
+          // But restart if it stopped for any reason (check after a brief delay)
+          setTimeout(() => {
+            // Check if we should still be listening (user hasn't manually stopped)
+            // This will be handled by the continuous mode and autoRestart
+          }, 1000);
+        } catch (err) {
+          console.error("Error submitting voice command:", err);
         }
       }, 600);
     },
@@ -806,6 +815,11 @@ Amen.`);
       setLoadingMessage(""); // Always clear loading message
     }
   };
+
+  // Update handleSubmit ref so it's accessible in onFinal callback
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  }, [handleSubmit]);
 
   const toggleListening = () => {
     if (isListening) stopListening();
