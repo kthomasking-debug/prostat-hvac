@@ -23,14 +23,14 @@ export const SALES_FAQ = [
     ],
     question: "Does this work with Nest thermostats?",
     answer:
-      "ProStat is purpose-built for the Ecobee architecture. We don't support other thermostats due to current API costs. Ecobee provides robust local HomeKit integration (zero cloud fees), instant CSV downloads, and the data quality our algorithms require. Have a Nest? Join the waitlist - we'll add support if there's enough demand.",
+      "Not yet. ProStat is engineered exclusively for Ecobee. Why? Because Ecobee allows Local Control via HomeKit. This lets ProStat react in milliseconds to protect your compressor, without relying on the cloud. Nest and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic. Have a Nest? Join the Waitlist. We are building a cloud-bridge version for 2026.",
     category: "compatibility",
   },
   {
     keywords: ["honeywell t6", "honeywell", "t6"],
     question: "Does this work with Honeywell T6?",
     answer:
-      "ProStat is purpose-built for Ecobee. We focus on Ecobee because it provides superior data fidelity and local HomeKit integration without cloud dependencies. Have a Honeywell? Join the waitlist - we'll add support if there's enough demand (500+ signups).",
+      "Not yet. ProStat is engineered exclusively for Ecobee. Why? Because Ecobee allows Local Control via HomeKit. This lets ProStat react in milliseconds to protect your compressor, without relying on the cloud. Honeywell and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic. Have a Honeywell? Join the Waitlist. We are building a cloud-bridge version for 2026.",
     category: "compatibility",
   },
   {

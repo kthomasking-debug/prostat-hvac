@@ -379,13 +379,13 @@ const LandingPage = () => {
               {faqOpen[1] && (
                 <div className="px-4 pb-4 text-gray-600 dark:text-gray-400">
                   <p className="mb-2">
-                    <strong>ProStat is purpose-built for the Ecobee architecture.</strong> We don't support other thermostats due to current API costs.
+                    <strong>Not yet. ProStat is engineered exclusively for Ecobee.</strong>
                   </p>
                   <p className="mb-2">
-                    Ecobee provides robust local HomeKit integration (zero cloud fees, zero approval), instant CSV downloads for our Free tier, and the data quality our algorithms require.
+                    Why? Because Ecobee allows Local Control via HomeKit. This lets ProStat react in milliseconds to protect your compressor, without relying on the cloud. Nest and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic.
                   </p>
                   <p>
-                    <strong>Have a Nest?</strong> <a href="#waitlist" className="text-blue-600 dark:text-blue-400 underline">Join the waitlist</a> - we'll add support if there's enough demand.
+                    <strong>Have a Nest?</strong> <a href="#waitlist" className="text-blue-600 dark:text-blue-400 underline">Join the Waitlist</a>. We are building a cloud-bridge version for 2026.
                   </p>
                 </div>
               )}
