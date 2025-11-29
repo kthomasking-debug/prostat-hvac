@@ -551,6 +551,8 @@ const SevenDayCostForecaster = () => {
     foundLocationName,
   } = locState || {};
   
+  const [weatherAnomalies, setWeatherAnomalies] = useState(null);
+  
   // Ensure locHomeElevation has a default value to prevent initialization errors
   const safeLocHomeElevation = locHomeElevation ?? 0;
   
@@ -1019,6 +1021,25 @@ const SevenDayCostForecaster = () => {
       dispatch({ type: "FETCH_ERROR", error: forecastError });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forecastError]);
+
+  // Detect weather anomalies when forecast data is available
+  useEffect(() => {
+    if (forecastData && forecastData.length > 0 && coords.latitude && coords.longitude) {
+      detectWeatherAnomalies(forecastData, {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        city: foundLocationName?.split(',')[0],
+        state: foundLocationName?.split(',')[1]?.trim(),
+      }).then((result) => {
+        setWeatherAnomalies(result);
+      }).catch((err) => {
+        console.warn("Failed to detect weather anomalies:", err);
+        setWeatherAnomalies(null);
+      });
+    } else {
+      setWeatherAnomalies(null);
+    }
+  }, [forecastData, coords, foundLocationName]);
 
   // Location search (simplified after refactor)
   const handleCitySearch = async () => {
@@ -3396,6 +3417,71 @@ const SevenDayCostForecaster = () => {
                 <p className="text-red-600 font-semibold p-4 bg-red-50 rounded border border-red-200">
                   {forecastError}
                 </p>
+              )}
+
+              {/* Weather Anomaly Alerts */}
+              {weatherAnomalies && weatherAnomalies.hasAnomaly && (
+                <div className="mb-6 space-y-3">
+                  {weatherAnomalies.anomalies.map((anomaly, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-4 rounded-lg border-2 ${
+                        anomaly.severity === 'extreme'
+                          ? 'bg-red-50 dark:bg-red-900/20 border-red-400 dark:border-red-600'
+                          : anomaly.severity === 'high'
+                          ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-400 dark:border-orange-600'
+                          : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-400 dark:border-yellow-600'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle
+                          className={`flex-shrink-0 mt-0.5 ${
+                            anomaly.severity === 'extreme'
+                              ? 'text-red-600 dark:text-red-400'
+                              : anomaly.severity === 'high'
+                              ? 'text-orange-600 dark:text-orange-400'
+                              : 'text-yellow-600 dark:text-yellow-400'
+                          }`}
+                          size={20}
+                        />
+                        <div className="flex-1">
+                          <h4 className="font-bold text-gray-900 dark:text-white mb-1">
+                            {anomaly.title}
+                          </h4>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                            {anomaly.description}
+                          </p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                            💰 {anomaly.impact}
+                          </p>
+                          {anomaly.startDate && (
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                              Starts: {new Date(anomaly.startDate).toLocaleDateString()} • Duration: {anomaly.duration}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {weatherAnomalies.warnings.map((warning, idx) => (
+                    <div
+                      key={`warning-${idx}`}
+                      className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700"
+                    >
+                      <div className="flex items-start gap-2">
+                        <HelpCircle className="flex-shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" size={18} />
+                        <div>
+                          <p className="font-semibold text-sm text-gray-900 dark:text-white mb-1">
+                            {warning.title}
+                          </p>
+                          <p className="text-xs text-gray-700 dark:text-gray-300">
+                            {warning.description} {warning.impact}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
 
               {weeklyMetrics && !forecastLoading && !forecastError && (
