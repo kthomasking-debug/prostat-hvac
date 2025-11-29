@@ -856,6 +856,20 @@ Amen.`);
     handleSubmitRef.current = handleSubmit;
   }, [handleSubmit]);
 
+  // Speak the agentic response when it arrives
+  useEffect(() => {
+    if (agenticResponse?.success && agenticResponse?.message && speak && speechEnabled) {
+      // Extract clean text from response
+      const responseText = agenticResponse.message;
+      if (responseText && responseText.trim()) {
+        // Small delay to ensure UI has updated
+        setTimeout(() => {
+          speak(responseText);
+        }, 300);
+      }
+    }
+  }, [agenticResponse, speak, speechEnabled]);
+
   const toggleListening = () => {
     if (isListening) {
       shouldBeListeningRef.current = false; // User manually stopped
