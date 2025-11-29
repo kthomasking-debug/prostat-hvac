@@ -1268,6 +1268,7 @@ async function buildMinimalContext(
   }
 
   // Check for forecast/temperature questions (high, low, specific day, next week, etc.)
+  // Enhanced to catch more date patterns: "this Tuesday", "in 3 days", "day after tomorrow", etc.
   const isForecastQuestion =
     lowerQuestion.includes("forecast") ||
     lowerQuestion.includes("high") ||
@@ -1278,28 +1279,53 @@ async function buildMinimalContext(
     lowerQuestion.includes("next month") ||
     lowerQuestion.includes("7 day") ||
     lowerQuestion.includes("7-day") ||
+    lowerQuestion.includes("tomorrow") ||
+    lowerQuestion.includes("day after") ||
+    /in\s+\d+\s+days?/i.test(lowerQuestion) ||
+    /(?:this|next)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)/i.test(lowerQuestion) ||
     /(?:what'?s?|what is|tell me|show me).*(?:high|low|temp).*(?:for|on|next|tomorrow|tuesday|wednesday|thursday|friday|saturday|sunday|monday)/i.test(lowerQuestion) ||
     /(?:coldest|warmest).*(?:low|high|temp|day)/i.test(lowerQuestion);
 
   if (isForecastQuestion) {
     const forecastData = getForecastData();
-    if (forecastData && forecastData.dailySummary && forecastData.dailySummary.length > 0) {
+    // Handle errors gracefully
+    if (forecastData && forecastData.error) {
+      context += `\n\n7-Day Forecast Data Error: ${forecastData.error}\n`;
+      context += `Please run a new forecast on the 7-Day Cost Forecaster page.\n`;
+    } else if (forecastData && forecastData.dailySummary && forecastData.dailySummary.length > 0) {
       context += `\n\n═══════════════════════════════════════════════════════════════\n`;
       context += `7-DAY COST FORECAST DATA\n`;
       context += `═══════════════════════════════════════════════════════════════\n`;
       context += `Location: ${forecastData.location || "Unknown"}\n`;
+      if (forecastData.isStale) {
+        context += `⚠️ WARNING: This forecast is ${forecastData.ageInDays} days old and may be outdated. Recommend running a new forecast for current data.\n`;
+      }
       context += `Daily Forecast Summary:\n`;
       forecastData.dailySummary.forEach((day) => {
         context += `- ${day.day}: Low ${day.lowTemp.toFixed(1)}°F, High ${day.highTemp.toFixed(1)}°F`;
         if (day.avgHumidity) {
           context += `, Avg Humidity ${day.avgHumidity.toFixed(0)}%`;
         }
-        if (day.cost) {
-          context += `, Cost $${day.cost.toFixed(2)}`;
+        // Enhanced cost breakdown context
+        if (day.cost !== null || day.costWithAux !== null) {
+          const costToShow = day.costWithAux !== null ? day.costWithAux : day.cost;
+          context += `, Cost $${costToShow.toFixed(2)}`;
+        }
+        // Include energy usage context
+        if (day.energy !== null) {
+          context += `, Energy ${day.energy.toFixed(1)} kWh`;
+        }
+        // Include aux heat usage if available
+        if (day.auxEnergy !== null && day.auxEnergy > 0) {
+          context += `, Aux Heat ${day.auxEnergy.toFixed(1)} kWh`;
         }
         context += `\n`;
       });
       context += `\nUse this data to answer questions about specific days, highs, lows, or temperature ranges.\n`;
+      context += `You can parse relative dates like "tomorrow", "this Tuesday", "next Friday", "in 3 days", "day after tomorrow".\n`;
+      if (forecastData.isStale) {
+        context += `\n⚠️ IMPORTANT: If the user asks about current or upcoming weather, remind them this forecast is ${forecastData.ageInDays} days old and they should run a new forecast for accurate data.\n`;
+      }
       context += `═══════════════════════════════════════════════════════════════\n`;
     } else {
       context += `\n\n7-Day Forecast Data: Not available. Run a forecast on the 7-Day Cost Forecaster page to see temperature predictions.\n`;
@@ -1353,6 +1379,16 @@ async function buildMinimalContext(
       context += `, Capacity: ${(settings.tons * 12).toFixed(0)}k BTU (${
         settings.tons
       } tons)`;
+    }
+
+    // Include utility rates when discussing costs
+    if (lowerQuestion.includes("cost") || lowerQuestion.includes("bill") || lowerQuestion.includes("expense") || lowerQuestion.includes("savings")) {
+      if (settings.utilityCost) {
+        context += `\nElectricity rate: $${settings.utilityCost.toFixed(3)}/kWh`;
+      }
+      if (settings.gasCost) {
+        context += `, Gas rate: $${settings.gasCost.toFixed(3)}/therm`;
+      }
     }
 
     // Include thermostat settings

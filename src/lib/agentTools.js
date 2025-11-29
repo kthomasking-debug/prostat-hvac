@@ -621,8 +621,129 @@ export function getDiagnosticData(query, thermostatData, userSettings) {
 }
 
 /**
+ * Parse a day name from forecast data (e.g., "Fri, 11/14" -> "Fri")
+ */
+function parseDayName(dayString) {
+  if (!dayString) return null;
+  const match = dayString.match(/^(\w+),/);
+  return match ? match[1].toLowerCase() : null;
+}
+
+/**
+ * Parse date from forecast day string (e.g., "Fri, 11/14" -> Date object)
+ */
+function parseForecastDate(dayString) {
+  if (!dayString) return null;
+  const match = dayString.match(/(\d{1,2})\/(\d{1,2})/);
+  if (!match) return null;
+  const month = parseInt(match[1], 10) - 1; // JS months are 0-indexed
+  const day = parseInt(match[2], 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  // Handle year rollover (if month/day is in the past, assume next year)
+  const date = new Date(year, month, day);
+  if (date < now && date < new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)) {
+    return new Date(year + 1, month, day);
+  }
+  return date;
+}
+
+/**
+ * Find forecast day matching a user's date query
+ * Handles: "Tuesday", "this Tuesday", "next Tuesday", "tomorrow", "in 3 days", etc.
+ */
+function findMatchingForecastDay(query, dailySummary) {
+  if (!dailySummary || dailySummary.length === 0) return null;
+  
+  const lowerQuery = query.toLowerCase().trim();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Parse day names
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayAbbrevs = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  
+  // Check for "tomorrow"
+  if (lowerQuery.includes('tomorrow')) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return dailySummary.find(d => {
+      const forecastDate = parseForecastDate(d.day);
+      return forecastDate && forecastDate.getTime() === tomorrow.getTime();
+    });
+  }
+  
+  // Check for "today"
+  if (lowerQuery.includes('today')) {
+    return dailySummary.find(d => {
+      const forecastDate = parseForecastDate(d.day);
+      return forecastDate && forecastDate.getTime() === today.getTime();
+    });
+  }
+  
+  // Check for "day after tomorrow" or "in 2 days"
+  if (lowerQuery.includes('day after tomorrow') || /in\s+2\s+days?/i.test(lowerQuery)) {
+    const targetDate = new Date(today);
+    targetDate.setDate(targetDate.getDate() + 2);
+    return dailySummary.find(d => {
+      const forecastDate = parseForecastDate(d.day);
+      return forecastDate && forecastDate.getTime() === targetDate.getTime();
+    });
+  }
+  
+  // Check for "in X days"
+  const daysMatch = lowerQuery.match(/in\s+(\d+)\s+days?/i);
+  if (daysMatch) {
+    const days = parseInt(daysMatch[1], 10);
+    const targetDate = new Date(today);
+    targetDate.setDate(targetDate.getDate() + days);
+    return dailySummary.find(d => {
+      const forecastDate = parseForecastDate(d.day);
+      return forecastDate && forecastDate.getTime() === targetDate.getTime();
+    });
+  }
+  
+  // Check for day names (Tuesday, this Tuesday, next Tuesday)
+  for (let i = 0; i < dayNames.length; i++) {
+    const dayName = dayNames[i];
+    const dayAbbrev = dayAbbrevs[i];
+    
+    if (lowerQuery.includes(dayName) || lowerQuery.includes(dayAbbrev)) {
+      const isNext = lowerQuery.includes('next');
+      const isThis = lowerQuery.includes('this');
+      
+      // Find the target day of week
+      const todayDayOfWeek = today.getDay();
+      let targetDayOfWeek = i;
+      
+      // Calculate days until target day
+      let daysUntilTarget = (targetDayOfWeek - todayDayOfWeek + 7) % 7;
+      if (daysUntilTarget === 0) daysUntilTarget = 7; // If today is the day, get next week's
+      
+      if (isNext) {
+        daysUntilTarget += 7; // Next week's occurrence
+      } else if (isThis && daysUntilTarget === 7) {
+        daysUntilTarget = 0; // This week's occurrence (today if it's that day)
+      }
+      
+      const targetDate = new Date(today);
+      targetDate.setDate(targetDate.getDate() + daysUntilTarget);
+      
+      return dailySummary.find(d => {
+        const forecastDate = parseForecastDate(d.day);
+        return forecastDate && forecastDate.getTime() === targetDate.getTime();
+      });
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Get 7-Day Cost Forecast data
  * Returns daily high/low temperatures and forecast summary
+ * Includes staleness check (forecasts older than 7 days are considered stale)
+ * Enhanced with date parsing and cost breakdown context
  */
 export function getForecastData() {
   if (typeof window === "undefined") {
@@ -640,15 +761,56 @@ export function getForecastData() {
       return null;
     }
 
+    // Check if forecast is stale (older than 7 days)
+    const now = Date.now();
+    const forecastAge = parsed.timestamp ? now - parsed.timestamp : Infinity;
+    const isStale = forecastAge > 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+    const ageInDays = forecastAge / (24 * 60 * 60 * 1000);
+
+    // Validate and enhance daily summary
+    const dailySummary = (parsed.dailySummary || []).map(day => ({
+      ...day,
+      // Ensure all numeric fields are valid
+      lowTemp: typeof day.lowTemp === 'number' ? day.lowTemp : null,
+      highTemp: typeof day.highTemp === 'number' ? day.highTemp : null,
+      avgHumidity: typeof day.avgHumidity === 'number' ? day.avgHumidity : null,
+      cost: typeof day.cost === 'number' ? day.cost : null,
+      costWithAux: typeof day.costWithAux === 'number' ? day.costWithAux : null,
+      energy: typeof day.energy === 'number' ? day.energy : null,
+      auxEnergy: typeof day.auxEnergy === 'number' ? day.auxEnergy : null,
+      energyWithAux: typeof day.energyWithAux === 'number' ? day.energyWithAux : null,
+    })).filter(day => day.lowTemp !== null && day.highTemp !== null); // Filter out invalid entries
+
+    // Validate data structure
+    if (!Array.isArray(dailySummary) || dailySummary.length === 0) {
+      console.warn("Forecast data has no valid daily summary");
+      return {
+        location: parsed.location || null,
+        timestamp: parsed.timestamp || null,
+        totalHPCost: parsed.totalHPCost || null,
+        dailySummary: [],
+        isStale,
+        ageInDays: isStale ? Math.round(ageInDays) : null,
+        error: "No daily forecast data available",
+      };
+    }
+
     return {
       location: parsed.location || null,
       timestamp: parsed.timestamp || null,
       totalHPCost: parsed.totalHPCost || null,
-      dailySummary: parsed.dailySummary || [], // Array of {day, lowTemp, highTemp, avgHumidity, cost, energy}
+      dailySummary,
+      isStale,
+      ageInDays: isStale ? Math.round(ageInDays) : null,
+      // Helper function to find matching day
+      findDay: (query) => findMatchingForecastDay(query, dailySummary),
     };
   } catch (e) {
     console.warn("Failed to parse forecast data:", e);
-    return null;
+    return {
+      error: `Failed to parse forecast data: ${e.message}`,
+      dailySummary: [],
+    };
   }
 }
 
