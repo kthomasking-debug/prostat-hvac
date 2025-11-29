@@ -429,7 +429,13 @@ const LandingPage = () => {
               {faqOpen[3] && (
                 <div className="px-4 pb-4 text-gray-600 dark:text-gray-400">
                   <p>
-                    Our predictions use real-time weather data, your home's actual heat loss characteristics (calculated from your data), and current utility rates. Most users see accuracy within 5-10% of actual bills. The more data you provide, the more accurate it gets.
+                    Physics-Grade Accuracy.
+                  </p>
+                  <p className="mb-2">
+                    We don't guess based on 'similar homes.' We calculate your home's unique Thermal Decay Rate (how fast it loses heat per hour). By combining this physics model with your local utility rates and hyperlocal weather forecasts, ProStat predicts your bill within 5-8% variance.
+                  </p>
+                  <p>
+                    Bonus: We flag 'Weather Anomalies' (like Polar Vortex events) before they hit your wallet.
                   </p>
                 </div>
               )}
