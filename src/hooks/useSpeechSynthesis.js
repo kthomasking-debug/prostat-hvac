@@ -265,6 +265,11 @@ export function useSpeechSynthesis(options = {}) {
         .replace(/\bHVAC\b/gi, "H V A C") // Heating, Ventilation, Air Conditioning
         .replace(/\$(\d+)/g, "$1 dollars") // Say "dollars" instead of just the number
         .replace(/°F/g, " degrees Fahrenheit")
+        // Replace dashes with "to" for ranges (but preserve negative numbers)
+        .replace(/(\d+)\s*-\s*(\d+)/g, "$1 to $2") // Number ranges: "32-40" → "32 to 40"
+        .replace(/(\w+)\s*-\s*(\w+)/g, "$1 to $2") // Word ranges: "heating-cooling" → "heating to cooling"
+        .replace(/(\d+)\s*-\s*(\w+)/g, "$1 to $2") // Mixed: "70-heating" → "70 to heating"
+        .replace(/(\w+)\s*-\s*(\d+)/g, "$1 to $2") // Mixed: "heating-70" → "heating to 70"
         .replace(/(\d+)\s*HSPF/gi, "$1 H S P F") // Handle HSPF with numbers (e.g., "9 HSPF")
         .replace(/(\d+)\s*SEER/gi, "$1 S E E R") // Handle SEER with numbers
         .replace(/(\d+)\s*AFUE/gi, "$1 A F U E") // Handle AFUE with numbers
