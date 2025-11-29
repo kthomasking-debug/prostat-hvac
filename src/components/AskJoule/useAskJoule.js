@@ -79,6 +79,7 @@ export function useAskJoule({
   const submitRef = useRef(null);
   const handleSubmitRef = useRef(null);
   const valueClearedRef = useRef(false);
+  const lastProcessedTranscriptRef = useRef("");
 
   // --- Hooks ---
   // Wake word detection enabled state
@@ -118,12 +119,26 @@ export function useAskJoule({
     // would capture a stale `transcript` value and cause bugs.
     onFinal: (finalText) => {
       if (!finalText) return;
-      setValue(finalText);
+      
+      // Extract only the NEW text (what comes after what we've already processed)
+      // This prevents old commands from being included in new commands
+      const lastProcessed = lastProcessedTranscriptRef.current;
+      let newText = finalText;
+      if (lastProcessed && finalText.startsWith(lastProcessed)) {
+        newText = finalText.slice(lastProcessed.length).trim();
+      }
+      
+      if (!newText) return; // No new text to process
+      
+      // Update the last processed transcript
+      lastProcessedTranscriptRef.current = finalText;
+      
+      setValue(newText);
       // Submit shortly after finalization - use ref to access handleSubmit
       setTimeout(async () => {
         try {
           if (handleSubmitRef.current) {
-            await handleSubmitRef.current(null, finalText);
+            await handleSubmitRef.current(null, newText);
             // Clear the input field after command executes so next voice command is fresh
             valueClearedRef.current = true; // Flag that we're clearing to prevent transcript from repopulating
             setValue("");
@@ -830,8 +845,15 @@ Amen.`);
   }, [handleSubmit]);
 
   const toggleListening = () => {
-    if (isListening) stopListening();
-    else startListening();
+    if (isListening) {
+      stopListening();
+      // Reset transcript tracking when stopping
+      lastProcessedTranscriptRef.current = "";
+    } else {
+      // Reset transcript tracking when starting fresh
+      lastProcessedTranscriptRef.current = "";
+      startListening();
+    }
   };
 
   const handleRetryGroq = () => {
