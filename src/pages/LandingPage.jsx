@@ -404,7 +404,13 @@ const LandingPage = () => {
               {faqOpen[2] && (
                 <div className="px-4 pb-4 text-gray-600 dark:text-gray-400">
                   <p>
-                    No problem! The Free tier lets you upload CSV exports from any thermostat. Export your data, upload it to ProStat, and get the same powerful analysis. The Monitor tier requires Ecobee for automatic daily analysis.
+                    You can still use the Intelligence Engine.
+                  </p>
+                  <p className="mb-2">
+                    Any thermostat that exports data (CSV) works with our Free Analyzer. Upload your data to get your Heat Loss Score, Balance Point, and Efficiency Grade instantly.
+                  </p>
+                  <p>
+                    For Automatic Monitoring & Control, you need an Ecobee. The ProStat Bridge requires Ecobee's local API to run its protection logic.
                   </p>
                 </div>
               )}
