@@ -81,6 +81,7 @@ export function useAskJoule({
   const handleSubmitRef = useRef(null);
   const valueClearedRef = useRef(false);
   const shouldBeListeningRef = useRef(false);
+  const speechManuallyStoppedRef = useRef(false);
 
   // --- Hooks ---
   // Wake word detection enabled state
@@ -175,14 +176,17 @@ export function useAskJoule({
         shouldBeListeningRef.current = true; // Remember user wanted to listen
         stopListening();
       }
+      // Reset manual stop flag when speech starts (user might have stopped previous speech)
+      speechManuallyStoppedRef.current = false;
     } else {
       // System finished speaking - resume recognition if user wanted to listen
+      // BUT: Don't resume if user manually stopped the speech
       // Only resume if we're not currently listening (to avoid conflicts)
-      if (shouldBeListeningRef.current && !isListening && !isSpeaking) {
+      if (shouldBeListeningRef.current && !isListening && !isSpeaking && !speechManuallyStoppedRef.current) {
         // Small delay to ensure speech synthesis has fully stopped
         const timeoutId = setTimeout(() => {
           // Double-check conditions before resuming
-          if (shouldBeListeningRef.current && !isListening && !isSpeaking) {
+          if (shouldBeListeningRef.current && !isListening && !isSpeaking && !speechManuallyStoppedRef.current) {
             startListening();
           }
         }, 500);
@@ -980,7 +984,10 @@ Amen.`);
     handleSubmit,
     toggleListening,
     toggleSpeech,
-    stopSpeaking,
+    stopSpeaking: () => {
+      speechManuallyStoppedRef.current = true; // Mark that user manually stopped
+      stopSpeaking();
+    },
     setShowSuggestions,
     setError,
     handleRetryGroq,
