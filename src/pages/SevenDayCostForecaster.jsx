@@ -31,6 +31,7 @@ import {
   CheckCircle2,
   Flame,
   ThermometerSun,
+  Calculator,
 } from "lucide-react";
 import {
   inputClasses,
@@ -608,6 +609,7 @@ const SevenDayCostForecaster = () => {
   const [showElevationAnalysis, setShowElevationAnalysis] = useState(false);
   const [showAfueTooltip, setShowAfueTooltip] = useState(false);
   const [showHeatLossTooltip, setShowHeatLossTooltip] = useState(false);
+  const [showCalculations, setShowCalculations] = useState(false);
   const [isEditingElevation, setIsEditingElevation] = useState(false);
   const [editingElevationValue, setEditingElevationValue] = useState("");
 
@@ -4076,12 +4078,31 @@ const SevenDayCostForecaster = () => {
                                   const costPerHourAt70F = (heatLossAt70F / 3412) * utilityCost; // $/hr at 70°F ΔT
                                   const costPerHourPerDegreeF = (heatLossFactor / 3412) * utilityCost; // $/hr/°F
                                   
+                                  // Determine data source for display
+                                  const isUsingAnalyzerData = Boolean(userSettings?.useAnalyzerHeatLoss && userSettings?.analyzerHeatLoss);
+                                  const isUsingManualData = Boolean(userSettings?.useManualHeatLoss && userSettings?.manualHeatLoss);
+                                  const dataSourceLabel = isUsingAnalyzerData 
+                                    ? "from ecobee CSV analysis" 
+                                    : isUsingManualData 
+                                    ? "from manual entry"
+                                    : "calculated from building specs";
+                                  
                                   return (
                                     <p className="text-xs text-gray-700 dark:text-gray-300 border-t border-blue-200 dark:border-blue-700 pt-2 mt-2">
-                                      <strong>Building Heat Loss:</strong>{" "}
+                                      <strong>Building Heat Loss</strong>{" "}
+                                      {isUsingAnalyzerData && (
+                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                          (from CSV analysis)
+                                        </span>
+                                      )}
+                                      {": "}
                                       <span className="font-mono">{heatLossFactor.toFixed(1)}</span> BTU/hr/°F{" "}
                                       <span className="text-gray-500 dark:text-gray-400">•</span>{" "}
                                       <span className="font-mono">{heatLossAt70F.toLocaleString()}</span> BTU/hr @ 70°F ΔT
+                                      <br />
+                                      <span className="text-gray-600 dark:text-gray-400 text-[10px] italic">
+                                        {dataSourceLabel}
+                                      </span>
                                       <br />
                                       <span className="text-gray-600 dark:text-gray-400">
                                         Cost: <span className="font-mono">${costPerHourPerDegreeF.toFixed(4)}</span>/hr/°F{" "}
@@ -4201,7 +4222,7 @@ const SevenDayCostForecaster = () => {
                                   const heatpumpOutputBtu = tons * 3.517 * capacityFactor * 3412.14;
                                   const powerFactor = 1 / Math.max(0.7, capacityFactor);
                                   const baseElectricalKw = compressorPower * powerFactor;
-                                  const defrostPenalty = (firstHour.temp > 20 && firstHour.temp < 45) ? (1 + 0.15 * (firstHour.humidity / 100)) : 1.0;
+                                  const defrostPenalty = heatUtils.getDefrostPenalty(firstHour.temp, firstHour.humidity);
                                   const electricalKw = baseElectricalKw * defrostPenalty;
                                   const runtime = heatpumpOutputBtu > 0 ? (buildingHeatLossBtu / heatpumpOutputBtu) * 100 : 100;
                                   const deficitBtu = Math.max(0, buildingHeatLossBtu - heatpumpOutputBtu);
@@ -4468,6 +4489,262 @@ const SevenDayCostForecaster = () => {
                       )}
                     </div>
                   )}
+
+                  {/* Live Math Calculations Pulldown */}
+                  {weeklyMetrics && primarySystem === "heatPump" && (
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-8">
+                      <button
+                        onClick={() => setShowCalculations(!showCalculations)}
+                        className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                            <Calculator size={24} className="text-white" />
+                          </div>
+                          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
+                        </div>
+                        {showCalculations ? (
+                          <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                        ) : (
+                          <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                        )}
+                      </button>
+
+                      {showCalculations && (
+                        <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                          {/* Building Characteristics */}
+                          <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                            <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Building Characteristics</h4>
+                            <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                              <div className="flex justify-between">
+                                <span>Square Feet:</span>
+                                <span className="font-bold">{squareFeet.toLocaleString()} sq ft</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Insulation Level:</span>
+                                <span className="font-bold">{insulationLevel.toFixed(2)}x</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Home Shape Factor:</span>
+                                <span className="font-bold">{homeShape.toFixed(2)}x</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Ceiling Height:</span>
+                                <span className="font-bold">{ceilingHeight} ft</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Ceiling Multiplier:</span>
+                                <span className="font-bold">{(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}x</span>
+                              </div>
+                              <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
+                                <div className="flex justify-between">
+                                  <span>Design Heat Loss @ 70°F ΔT:</span>
+                                  <span className="font-bold text-blue-600 dark:text-blue-400">
+                                    {Math.round(squareFeet * 22.67 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1) / 1000) * 1000} BTU/hr
+                                  </span>
+                                </div>
+                                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                  = {squareFeet.toLocaleString()} × 22.67 × {insulationLevel.toFixed(2)} × {homeShape.toFixed(2)} × {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}
+                                </div>
+                              </div>
+                              <div className="pt-2">
+                                <div className="flex justify-between">
+                                  <span>BTU Loss per °F:</span>
+                                  <span className="font-bold text-blue-600 dark:text-blue-400">
+                                    {((squareFeet * 22.67 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1)) / 70).toFixed(1)} BTU/hr/°F
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* System Configuration */}
+                          <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
+                            <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">System Configuration</h4>
+                            <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                              <div className="flex justify-between">
+                                <span>Primary System:</span>
+                                <span className="font-bold">Heat Pump</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Capacity:</span>
+                                <span className="font-bold">{capacity}k BTU</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Tons:</span>
+                                <span className="font-bold">{tons.toFixed(1)} tons</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>HSPF2:</span>
+                                <span className="font-bold">{hspf2.toFixed(1)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Compressor Power:</span>
+                                <span className="font-bold">{compressorPower.toFixed(2)} kW</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Electricity Rate:</span>
+                                <span className="font-bold">${utilityCost.toFixed(3)} / kWh</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Temperature Settings */}
+                          <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                            <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Temperature Settings</h4>
+                            <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                              <div className="flex justify-between">
+                                <span>Indoor Temp:</span>
+                                <span className="font-bold">{indoorTemp}°F</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Daytime Temp:</span>
+                                <span className="font-bold">{indoorTemp}°F</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Nighttime Temp:</span>
+                                <span className="font-bold">{nighttimeTemp}°F</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Example Hour Calculation */}
+                          {adjustedForecast && adjustedForecast.length > 0 && (() => {
+                            const firstHour = adjustedForecast[0];
+                            const tempDiff = Math.max(1, indoorTemp - firstHour.temp);
+                            const heatLossFactor = effectiveHeatLoss / 70;
+                            const buildingHeatLossBtu = heatLossFactor * tempDiff;
+                            const capacityFactor = heatUtils.getCapacityFactor(firstHour.temp);
+                            const heatpumpOutputBtu = tons * 3.517 * capacityFactor * 3412.14;
+                            const powerFactor = 1 / Math.max(0.7, capacityFactor);
+                            const baseElectricalKw = compressorPower * powerFactor;
+                            const defrostPenalty = heatUtils.getDefrostPenalty(firstHour.temp, firstHour.humidity);
+                            const electricalKw = baseElectricalKw * defrostPenalty;
+                            const runtime = heatpumpOutputBtu > 0 ? (buildingHeatLossBtu / heatpumpOutputBtu) * 100 : 100;
+                            const deficitBtu = Math.max(0, buildingHeatLossBtu - heatpumpOutputBtu);
+                            const auxKw = deficitBtu / 3412.14;
+                            const energyForHour = electricalKw * (Math.min(100, Math.max(0, runtime)) / 100);
+                            const hourRate = computeHourlyRate(firstHour.time, localRates, utilityCost);
+                            const hourCost = energyForHour * hourRate;
+                            const auxCost = (breakdownView === "withAux" && useElectricAuxHeatSetting) ? auxKw * hourRate : 0;
+
+                            return (
+                              <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+                                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Example Hour Calculation ({firstHour.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {firstHour.temp.toFixed(1)}°F outdoor)</h4>
+                                <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                                  <div className="flex justify-between">
+                                    <span>Temperature Difference:</span>
+                                    <span className="font-bold">{tempDiff.toFixed(1)}°F</span>
+                                  </div>
+                                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                                    = {indoorTemp}°F - {firstHour.temp.toFixed(1)}°F
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Building Heat Loss:</span>
+                                    <span className="font-bold text-orange-600 dark:text-orange-400">{buildingHeatLossBtu.toFixed(0)} BTU/hr</span>
+                                  </div>
+                                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                                    = {heatLossFactor.toFixed(1)} BTU/hr/°F × {tempDiff.toFixed(1)}°F
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Capacity Factor:</span>
+                                    <span className="font-bold">{capacityFactor.toFixed(3)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Heat Pump Output:</span>
+                                    <span className="font-bold text-orange-600 dark:text-orange-400">{heatpumpOutputBtu.toFixed(0)} BTU/hr</span>
+                                  </div>
+                                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                                    = {tons.toFixed(1)} tons × 3.517 × {capacityFactor.toFixed(3)} × 3412.14
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Runtime:</span>
+                                    <span className="font-bold text-orange-600 dark:text-orange-400">{Math.min(100, Math.max(0, runtime)).toFixed(1)}%</span>
+                                  </div>
+                                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                                    = ({buildingHeatLossBtu.toFixed(0)} ÷ {heatpumpOutputBtu.toFixed(0)}) × 100
+                                  </div>
+                                  {deficitBtu > 0 && (
+                                    <>
+                                      <div className="flex justify-between">
+                                        <span>Aux Heat Needed:</span>
+                                        <span className="font-bold text-red-600 dark:text-red-400">{auxKw.toFixed(2)} kW</span>
+                                      </div>
+                                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                                        = {deficitBtu.toFixed(0)} BTU ÷ 3412.14
+                                      </div>
+                                    </>
+                                  )}
+                                  <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
+                                    <div className="flex justify-between">
+                                      <span>Energy for Hour:</span>
+                                      <span className="font-bold text-orange-600 dark:text-orange-400">{energyForHour.toFixed(3)} kWh</span>
+                                    </div>
+                                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                                      = {electricalKw.toFixed(2)} kW × ({Math.min(100, Math.max(0, runtime)).toFixed(1)} ÷ 100)
+                                    </div>
+                                    <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
+                                      <div className="flex justify-between">
+                                        <span>Hourly Cost:</span>
+                                        <span className="font-bold text-orange-600 dark:text-orange-400">${(hourCost + auxCost).toFixed(2)}</span>
+                                      </div>
+                                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                                        = {energyForHour.toFixed(3)} kWh × ${hourRate.toFixed(3)}/kWh
+                                        {auxCost > 0 && ` + ${auxKw.toFixed(2)} kW aux × $${hourRate.toFixed(3)}/kWh`}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Weekly Summary */}
+                          {weeklyMetrics && (
+                            <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">7-Day Summary</h4>
+                              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                                <div className="flex justify-between">
+                                  <span>Total HP Energy:</span>
+                                  <span className="font-bold text-green-600 dark:text-green-400">{weeklyMetrics.totalEnergy.toFixed(1)} kWh</span>
+                                </div>
+                                {breakdownView === "withAux" && useElectricAuxHeatSetting && (
+                                  <>
+                                    <div className="flex justify-between">
+                                      <span>Total Aux Energy:</span>
+                                      <span className="font-bold text-green-600 dark:text-green-400">
+                                        {weeklyMetrics.summary.reduce((acc, d) => acc + d.auxEnergy, 0).toFixed(1)} kWh
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Total Energy (with Aux):</span>
+                                      <span className="font-bold text-green-600 dark:text-green-400">
+                                        {(weeklyMetrics.totalEnergy + weeklyMetrics.summary.reduce((acc, d) => acc + d.auxEnergy, 0)).toFixed(1)} kWh
+                                      </span>
+                                    </div>
+                                  </>
+                                )}
+                                <div className="pt-2 border-t border-green-300 dark:border-green-700">
+                                  <div className="flex justify-between">
+                                    <span>Total 7-Day Cost:</span>
+                                    <span className="font-bold text-green-600 dark:text-green-400">
+                                      ${(breakdownView === "withAux" && useElectricAuxHeatSetting ? weeklyMetrics.totalCostWithAux : weeklyMetrics.totalCost).toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between pt-2">
+                                    <span>Average Daily Cost:</span>
+                                    <span className="font-bold text-green-600 dark:text-green-400">
+                                      ${((breakdownView === "withAux" && useElectricAuxHeatSetting ? weeklyMetrics.totalCostWithAux : weeklyMetrics.totalCost) / 7).toFixed(2)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -4596,6 +4873,11 @@ const SevenDayCostForecaster = () => {
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
                       Normalized: <strong>{perDegree.toFixed(1)}</strong>{" "}
                       BTU/hr/°F
+                      {userSettings?.useAnalyzerHeatLoss && userSettings?.analyzerHeatLoss && (
+                        <span className="text-emerald-600 dark:text-emerald-400 ml-1">
+                          (from CSV analysis)
+                        </span>
+                      )}
                     </p>
                     <p className="text-lg font-bold text-gray-800 dark:text-gray-100">
                       {Number.isFinite(calculatedHeatLossBtu)
@@ -4613,23 +4895,30 @@ const SevenDayCostForecaster = () => {
                       temperature. Multiply BTU/hr/°F by the ΔT to estimate
                       hourly heat loss.
                     </p>
-                    <div className="flex items-start gap-2">
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                        This is an estimate — real-world dynamic effects like
-                        solar gains, infiltration, or internal heat loads can
-                        change results.
+                    {userSettings?.useAnalyzerHeatLoss && userSettings?.analyzerHeatLoss && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-semibold">
+                        ✓ Using heat loss factor from ecobee CSV analysis: {userSettings.analyzerHeatLoss.toFixed(1)} BTU/hr/°F
                       </p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowHeatLossTooltip(!showHeatLossTooltip)
-                        }
-                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors mt-2"
-                        aria-label="More about dynamic effects"
-                      >
-                        <HelpCircle size={14} />
-                      </button>
-                    </div>
+                    )}
+                    {!userSettings?.useAnalyzerHeatLoss && (
+                      <div className="flex items-start gap-2">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                          {userSettings?.useManualHeatLoss 
+                            ? "Using manually entered heat loss factor."
+                            : "This is calculated from building specs — real-world dynamic effects like solar gains, infiltration, or internal heat loads can change results."}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowHeatLossTooltip(!showHeatLossTooltip)
+                          }
+                          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors mt-2"
+                          aria-label="More about dynamic effects"
+                        >
+                          <HelpCircle size={14} />
+                        </button>
+                      </div>
+                    )}
                     {showHeatLossTooltip && (
                       <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg text-xs text-gray-700 dark:text-gray-300">
                         <p className="font-semibold text-blue-700 dark:text-blue-300 mb-2">

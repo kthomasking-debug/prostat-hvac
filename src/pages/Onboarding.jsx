@@ -141,17 +141,30 @@ export default function Onboarding() {
 
     try {
       const inputParts = cityInput.split(",").map(s => s.trim());
-      const cityPart = inputParts[0];
+      let cityPart = inputParts[0];
       const statePart = inputParts[1]?.toUpperCase();
+      
+      // Capitalize city name properly (title case) for better API matching
+      // Convert "blairsville" to "Blairsville"
+      cityPart = cityPart
+        .toLowerCase()
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
       
       // Expand state abbreviation to full name if needed
       const stateFullName = US_STATES[statePart] || statePart;
       
       // Try multiple query formats for better results
+      // Include original input as fallback in case capitalization changes the name
+      const originalCityPart = inputParts[0];
       const queries = [
-        `${cityPart}, ${stateFullName}`, // Full state name
-        `${cityPart}, ${statePart}`,     // Abbreviation
-        cityPart,                        // Just city (fallback)
+        `${cityPart}, ${stateFullName}`, // Full state name (e.g., "Blairsville, Georgia")
+        `${cityPart}, ${statePart}`,     // Abbreviation (e.g., "Blairsville, GA")
+        `${originalCityPart}, ${stateFullName}`, // Original case with full state
+        `${originalCityPart}, ${statePart}`,     // Original case with abbreviation
+        `${cityPart}`,                   // Just city capitalized (fallback)
+        `${originalCityPart}`,           // Just city original case (last resort)
       ];
       
       let data = null;
@@ -165,6 +178,11 @@ export default function Onboarding() {
               query
             )}&count=10&language=en&format=json`
           );
+          
+          if (!response.ok) {
+            continue; // Try next query
+          }
+          
           data = await response.json();
           
           if (data.results && data.results.length > 0) {
@@ -187,6 +205,12 @@ export default function Onboarding() {
         (r) => (r.country_code || "").toLowerCase() === "us"
       );
       
+      if (usResults.length === 0) {
+        setLocationError("Location not found in the United States. Please check the spelling.");
+        setLocationLoading(false);
+        return;
+      }
+      
       const inputStateLower = statePart?.toLowerCase() || "";
       const stateFullNameLower = stateFullName?.toLowerCase() || "";
       
@@ -200,7 +224,19 @@ export default function Onboarding() {
           stateFullNameLower.startsWith(adminLower) ||
           (inputStateLower.length === 2 && adminLower.includes(inputStateLower))
         );
-      }) || usResults[0] || data.results[0];
+      });
+      
+      // If no state match found but we have results, and state was specified, show selection
+      if (!bestResult && statePart && usResults.length > 1) {
+        // Multiple cities with same name in different states - show selection
+        setLocationError(`Multiple locations found. Please be more specific or select from results.`);
+        setLocationLoading(false);
+        // TODO: Could show a selection UI here
+        return;
+      }
+      
+      // Fallback to first US result if no state match
+      bestResult = bestResult || usResults[0];
 
       if (bestResult) {
         const locationName = `${bestResult.name}, ${bestResult.admin1 || bestResult.country}`;

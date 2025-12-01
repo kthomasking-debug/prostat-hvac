@@ -52,6 +52,49 @@ export function getCapacityFactor(tempOut) {
   return Math.max(0.3, 1.0 - (47 - tempOut) * 0.01);
 }
 
+/**
+ * Calculate defrost penalty for heat pump operation
+ * 
+ * Accounts for energy waste during defrost cycles when outdoor coils ice up.
+ * Critical "Defrost Death Zone": 36-40°F with high humidity (90%+) causes rapid
+ * ice buildup, requiring defrost cycles every 45-60 minutes (15-20% penalty).
+ * 
+ * @param {number} outdoorTemp - Outdoor temperature in °F
+ * @param {number} humidity - Relative humidity as percentage (0-100)
+ * @returns {number} Defrost penalty multiplier (1.0 = no penalty, 1.15 = 15% penalty)
+ */
+export function getDefrostPenalty(outdoorTemp, humidity) {
+  if (outdoorTemp <= 20 || outdoorTemp >= 45) {
+    return 1.0; // No defrost needed outside this range
+  }
+  
+  const humidityRatio = humidity / 100;
+  let basePenalty = 0.15; // Default 15% max penalty
+  
+  // Defrost Death Zone: 36-40°F with high humidity
+  if (outdoorTemp >= 36 && outdoorTemp <= 40) {
+    // In death zone, increase base penalty for high humidity
+    if (humidityRatio >= 0.90) {
+      basePenalty = 0.20; // 20% base penalty for 90%+ RH in death zone
+    } else if (humidityRatio >= 0.80) {
+      basePenalty = 0.18; // 18% for 80-90% RH in death zone
+    }
+  }
+  
+  // Apply humidity scaling
+  let penalty = basePenalty * humidityRatio;
+  
+  // Additional penalty for extreme humidity (95%+) in critical range
+  if (humidityRatio >= 0.95 && outdoorTemp >= 32 && outdoorTemp <= 42) {
+    // Add extra 2-5% for extreme conditions (98% RH at 38°F = ~3-5% extra)
+    // Scale from 0% extra at 95% to 5% extra at 100%
+    const extremeBonus = (humidityRatio - 0.95) * 0.10; // 95% = 0%, 98% = 0.3%, 100% = 0.5%
+    penalty = penalty + extremeBonus;
+  }
+  
+  return 1 + penalty;
+}
+
 let _invalidPerfLogged = false;
 export function computeHourlyPerformance(
   { tons, indoorTemp, heatLossBtu, compressorPower },
@@ -100,22 +143,8 @@ export function computeHourlyPerformance(
   const powerFactor = 1 / Math.max(0.7, capacityFactor || 0.7);
   const baseElectricalKw = _compressorPower * powerFactor;
 
-  // ☦️ LOAD-BEARING: Defrost penalty calculation
-  // Why this exists: Heat pumps accumulate frost on the outdoor coil when outdoor temp is
-  // between 20-45°F with high humidity. The system must periodically reverse to defrost,
-  // consuming extra energy without producing heat. This penalty accounts for that waste.
-  //
-  // Why 20-45°F range: Below 20°F, air is too dry for significant frost. Above 45°F,
-  // temperatures are warm enough that defrost cycles are rare. The 15% base penalty
-  // scales with humidity (100% humidity = 15% penalty, 50% = 7.5%, etc.)
-  //
-  // Edge case handled: Very dry air (<30% humidity) in this range may not need defrost,
-  // but we use a conservative estimate to avoid underestimating energy costs.
-  // Real-world validation: Without this, energy estimates were 10-15% low in humid climates.
-  let defrostPenalty = 1.0;
-  if (outdoorTemp > 20 && outdoorTemp < 45) {
-    defrostPenalty = 1 + 0.15 * (humidity / 100);
-  }
+  // Use centralized defrost penalty calculation
+  const defrostPenalty = getDefrostPenalty(_outdoorTemp, _humidity);
   const electricalKw = baseElectricalKw * defrostPenalty;
 
   let runtimePercentage =

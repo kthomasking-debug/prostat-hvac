@@ -425,7 +425,7 @@ export function useAskJoule({
     if (check === "bridge") {
       // Check if bridge is connected via localStorage or context
       try {
-        const bridgeStatus = localStorage.getItem("prostatBridgeConnected") === "true";
+        const bridgeStatus = localStorage.getItem("jouleBridgeConnected") === "true";
         const status = bridgeStatus ? "Bridge is connected" : "Bridge is not connected";
         setOutput({ message: status, status: bridgeStatus ? "success" : "info" });
         if (speak) speak(status);
@@ -440,7 +440,7 @@ export function useAskJoule({
         // Check multiple possible localStorage keys for last update timestamp
         const timestamp = localStorage.getItem("ecobeeLastUpdate") || 
                          localStorage.getItem("lastDataUpdate") ||
-                         localStorage.getItem("prostatBridgeLastUpdate") ||
+                         localStorage.getItem("jouleBridgeLastUpdate") ||
                          localStorage.getItem("temperatureLastUpdate");
         if (timestamp) {
           const date = new Date(timestamp);
@@ -457,7 +457,7 @@ export function useAskJoule({
       }
       // Check if we're in demo mode or if there's any data at all
       const hasAnyData = localStorage.getItem("ecobeeData") || 
-                        localStorage.getItem("prostatBridgeData") ||
+                        localStorage.getItem("jouleBridgeData") ||
                         localStorage.getItem("temperatureData");
       
       if (hasAnyData) {

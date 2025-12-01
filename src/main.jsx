@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import App from "./App.jsx";
@@ -7,6 +7,16 @@ import "./styles/ui.css";
 import "./styles/design-system.css";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { routes } from "./navConfig.js";
+
+// Loading fallback component for lazy-loaded routes
+const RouteLoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-screen bg-white dark:bg-gray-900">
+    <div className="text-center">
+      <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mb-4"></div>
+      <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+    </div>
+  </div>
+);
 
 // Suppress common browser extension errors that don't affect the application
 window.addEventListener("error", (event) => {
@@ -54,7 +64,11 @@ const router = createBrowserRouter(
       children: routes.map((route) => ({
         index: route.path === "/",
         path: route.path === "/" ? undefined : route.path.replace(/^\//, ""),
-        element: <route.Component />,
+        element: (
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <route.Component />
+          </Suspense>
+        ),
       })),
     },
   ],

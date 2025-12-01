@@ -336,6 +336,20 @@ export default function ThermostatSettingsPanel() {
       window.removeEventListener("thermostatSettingsChanged", handleChange);
   }, []);
 
+  // Expand schedule section when navigated to with #schedule hash
+  useEffect(() => {
+    if (window.location.hash === '#schedule') {
+      setExpandedSections(prev => ({ ...prev, schedule: true }));
+      // Scroll to schedule section after a brief delay to ensure it's rendered
+      setTimeout(() => {
+        const scheduleElement = sectionRefs.current.schedule;
+        if (scheduleElement) {
+          scheduleElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, []);
+
   // Validate settings
   const validateSettings = (s) => {
     const errors = {};
@@ -1180,6 +1194,7 @@ export default function ThermostatSettingsPanel() {
       {/* Schedule */}
       {matchesSearch("schedule", "Schedule") && (
         <div
+          id="schedule"
           ref={(el) => (sectionRefs.current.schedule = el)}
           className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
         >

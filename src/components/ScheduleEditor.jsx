@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Clock } from "lucide-react";
 import {
   loadThermostatSettings,
@@ -17,9 +17,172 @@ const DAYS = [
 const DAY_KEYS = [0, 1, 2, 3, 4, 5, 6];
 const COMFORT_SETTINGS = ["home", "away", "sleep"];
 
+// Helper function to apply a profile to settings
+const applyProfile = (settings, profile) => {
+  const updated = { ...settings };
+  if (!updated.comfortSettings) {
+    updated.comfortSettings = {};
+  }
+  if (!updated.schedule) {
+    updated.schedule = { enabled: true, weekly: {} };
+  }
+  if (!updated.schedule.weekly) {
+    updated.schedule.weekly = {};
+  }
+
+  // Initialize comfort settings if needed
+  if (!updated.comfortSettings.home) {
+    updated.comfortSettings.home = {
+      heatSetPoint: 70,
+      coolSetPoint: 74,
+      humiditySetPoint: 50,
+      fanMode: "auto",
+      sensors: ["main"],
+    };
+  }
+  if (!updated.comfortSettings.away) {
+    updated.comfortSettings.away = {
+      heatSetPoint: 62,
+      coolSetPoint: 85,
+      humiditySetPoint: 60,
+      fanMode: "auto",
+      sensors: ["main"],
+    };
+  }
+  if (!updated.comfortSettings.sleep) {
+    updated.comfortSettings.sleep = {
+      heatSetPoint: 66,
+      coolSetPoint: 72,
+      humiditySetPoint: 50,
+      fanMode: "auto",
+      sensors: ["main"],
+    };
+  }
+
+  // Apply profile-specific settings
+  if (profile === "workFromHome") {
+    // Work from Home: Constant comfort, 24/7 occupancy
+    updated.comfortSettings.home.heatSetPoint = 70;
+    updated.comfortSettings.home.coolSetPoint = 74;
+    updated.comfortSettings.sleep.heatSetPoint = 68;
+    updated.comfortSettings.sleep.coolSetPoint = 72;
+    
+    // Schedule: All days same - home during day, sleep at night
+    const weekdaySchedule = [
+      { time: "06:00", comfortSetting: "home" },
+      { time: "22:00", comfortSetting: "sleep" },
+    ];
+    const weekendSchedule = [
+      { time: "08:00", comfortSetting: "home" },
+      { time: "22:00", comfortSetting: "sleep" },
+    ];
+    
+    // Monday-Friday (1-5)
+    for (let day = 1; day <= 5; day++) {
+      updated.schedule.weekly[day] = weekdaySchedule;
+    }
+    // Saturday (6) and Sunday (0)
+    updated.schedule.weekly[6] = weekendSchedule;
+    updated.schedule.weekly[0] = weekendSchedule;
+
+  } else if (profile === "commuter") {
+    // Commuter: Classic setback for work days
+    updated.comfortSettings.home.heatSetPoint = 70;
+    updated.comfortSettings.home.coolSetPoint = 74;
+    updated.comfortSettings.away.heatSetPoint = 62;
+    updated.comfortSettings.away.coolSetPoint = 85;
+    updated.comfortSettings.sleep.heatSetPoint = 65;
+    updated.comfortSettings.sleep.coolSetPoint = 72;
+    
+    // Weekday schedule: Morning (6-8am): home, Work (8am-5pm): away, Evening (5-10pm): home, Night: sleep
+    const weekdaySchedule = [
+      { time: "06:00", comfortSetting: "home" },
+      { time: "08:00", comfortSetting: "away" },
+      { time: "17:00", comfortSetting: "home" },
+      { time: "22:00", comfortSetting: "sleep" },
+    ];
+    
+    // Weekend schedule: More relaxed, home most of the day
+    const weekendSchedule = [
+      { time: "08:00", comfortSetting: "home" },
+      { time: "22:00", comfortSetting: "sleep" },
+    ];
+    
+    // Monday-Friday (1-5)
+    for (let day = 1; day <= 5; day++) {
+      updated.schedule.weekly[day] = weekdaySchedule;
+    }
+    // Saturday (6) and Sunday (0)
+    updated.schedule.weekly[6] = weekendSchedule;
+    updated.schedule.weekly[0] = weekendSchedule;
+
+  } else if (profile === "arbitrage") {
+    // Arbitrage (Peak Shaver): Pre-cool before peak, coast through expensive hours
+    updated.comfortSettings.home.heatSetPoint = 68; // Pre-cool setting
+    updated.comfortSettings.home.coolSetPoint = 68;
+    updated.comfortSettings.away.heatSetPoint = 76; // Peak coast setting
+    updated.comfortSettings.away.coolSetPoint = 76;
+    updated.comfortSettings.sleep.heatSetPoint = 72;
+    updated.comfortSettings.sleep.coolSetPoint = 72;
+    
+    // Schedule: Pre-Cool (2pm-4pm): home (68°F), Peak (4pm-8pm): away (76°F), Night: sleep (72°F)
+    const weekdaySchedule = [
+      { time: "06:00", comfortSetting: "home" }, // Morning comfort
+      { time: "14:00", comfortSetting: "home" }, // Pre-cool starts at 2pm
+      { time: "16:00", comfortSetting: "away" }, // Peak starts at 4pm (coast through)
+      { time: "20:00", comfortSetting: "home" }, // Return to comfort at 8pm
+      { time: "22:00", comfortSetting: "sleep" }, // Night at 10pm
+    ];
+    
+    // Weekend: More relaxed, but still use pre-cool strategy
+    const weekendSchedule = [
+      { time: "08:00", comfortSetting: "home" },
+      { time: "14:00", comfortSetting: "home" }, // Pre-cool
+      { time: "16:00", comfortSetting: "away" }, // Peak coast
+      { time: "20:00", comfortSetting: "home" },
+      { time: "22:00", comfortSetting: "sleep" },
+    ];
+    
+    // Monday-Friday (1-5)
+    for (let day = 1; day <= 5; day++) {
+      updated.schedule.weekly[day] = weekdaySchedule;
+    }
+    // Saturday (6) and Sunday (0)
+    updated.schedule.weekly[6] = weekendSchedule;
+    updated.schedule.weekly[0] = weekendSchedule;
+  }
+
+  // Enable schedule if not already enabled
+  updated.schedule.enabled = true;
+  
+  // Store the selected profile
+  updated.scheduleProfile = profile;
+
+  return updated;
+};
+
 export default function ScheduleEditor() {
-  const [settings, setSettings] = useState(loadThermostatSettings());
+  const [settings, setSettings] = useState(() => {
+    const loaded = loadThermostatSettings();
+    // If no profile is set, apply commuter as default
+    if (!loaded.scheduleProfile) {
+      const withDefault = applyProfile(loaded, "commuter");
+      saveThermostatSettings(withDefault);
+      return withDefault;
+    }
+    return loaded;
+  });
   const [selectedDay] = useState(null);
+  
+  // Ensure commuter profile is applied on mount if no profile exists
+  useEffect(() => {
+    const current = loadThermostatSettings();
+    if (!current.scheduleProfile) {
+      const withDefault = applyProfile(current, "commuter");
+      saveThermostatSettings(withDefault);
+      setSettings(withDefault);
+    }
+  }, []);
 
   const updateSchedule = (dayKey, schedule) => {
     const updated = { ...settings };
@@ -213,6 +376,47 @@ export default function ScheduleEditor() {
           time. The comfort setting will change at each scheduled time
           throughout the day.
         </p>
+      </div>
+
+      {/* Schedule Profile Presets */}
+      <div className="mt-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-lg border border-blue-200 dark:border-blue-700">
+        <div className="mb-3">
+          <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+            Load Schedule Preset
+          </h4>
+          <p className="text-xs text-gray-600 dark:text-gray-400">
+            Choose a preset profile based on your lifestyle and energy goals. You can customize after loading.
+          </p>
+        </div>
+        <select
+          value={settings.scheduleProfile || "commuter"}
+          onChange={(e) => {
+            const profile = e.target.value;
+            if (!profile) return;
+
+            const updated = applyProfile(settings, profile);
+            saveThermostatSettings(updated);
+            setSettings(updated);
+            window.dispatchEvent(new Event("thermostatSettingsChanged"));
+          }}
+          className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+        >
+          <option value="workFromHome">🏠 Work from Home (Constant Comfort)</option>
+          <option value="commuter">🚗 Commuter (Classic Setback)</option>
+          <option value="arbitrage">⚡ Arbitrage (Peak Shaver)</option>
+        </select>
+        
+        <div className="mt-3 space-y-2 text-xs text-gray-600 dark:text-gray-400">
+          <div>
+            <strong className="text-gray-800 dark:text-gray-200">Work from Home:</strong> Day 70°F / Night 68°F. Prioritizes comfort for 24/7 occupancy.
+          </div>
+          <div>
+            <strong className="text-gray-800 dark:text-gray-200">Commuter:</strong> Morning 70°F → Work 62°F → Evening 70°F → Night 65°F. Saves energy while empty.
+          </div>
+          <div>
+            <strong className="text-gray-800 dark:text-gray-200">Arbitrage:</strong> Pre-cool 68°F (2-4pm) → Peak 76°F (4-8pm) → Night 72°F. Uses house as thermal battery to avoid peak rates.
+          </div>
+        </div>
       </div>
     </div>
   );

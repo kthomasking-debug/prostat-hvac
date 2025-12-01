@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
-import { Upload, Zap, Home, TrendingUp, HelpCircle, Ruler, BarChart3, AlertTriangle } from 'lucide-react';
+import { Upload, Zap, Home, TrendingUp, HelpCircle, Ruler, BarChart3, AlertTriangle, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
 import { fullInputClasses } from '../lib/uiClasses'
 import { DashboardLink } from '../components/DashboardLink';
 import { normalizeCsvData } from '../lib/csvNormalization';
@@ -559,6 +559,196 @@ const SystemPerformanceAnalyzer = () => {
   const [manualInsulation, setManualInsulation] = useState(() => userSettings?.insulationLevel || 1.0);
   const [manualShape, setManualShape] = useState(() => userSettings?.homeShape || 0.9);
   const [showHeatLossTooltip, setShowHeatLossTooltip] = useState(false);
+  const [showCalculations, setShowCalculations] = useState(false);
+
+  // Helper: Find column names (handle both normalized and raw ecobee formats)
+  const findColumn = useMemo(() => {
+    return (patterns) => {
+      if (!parsedCsvRows || parsedCsvRows.length === 0) return null;
+      const sampleRow = parsedCsvRows[0];
+      const availableCols = Object.keys(sampleRow);
+      for (const pattern of patterns) {
+        const found = availableCols.find(col => pattern.test(col));
+        if (found) return found;
+      }
+      return null;
+    };
+  }, [parsedCsvRows]);
+
+  // Find all column names at top level (always called)
+  const currentTempCol = useMemo(() => findColumn([
+    /^Current Ten$/i,
+    /^(thermostat|indoor|current).*temp/i,
+    /^Thermostat Temperature \(F\)$/i,
+  ]), [findColumn]);
+
+  const heatSetTempCol = useMemo(() => findColumn([
+    /^Heat Set$/i,
+    /^Heat Setpoint$/i,
+    /^Heat Set Temp$/i,
+    /heat.*set.*temp/i,
+    /heat.*setpoint/i,
+  ]), [findColumn]);
+
+  const coolSetTempCol = useMemo(() => findColumn([
+    /^Cool Set$/i,
+    /^Cool Setpoint$/i,
+    /^Cool Set Temp$/i,
+    /cool.*set.*temp/i,
+    /cool.*setpoint/i,
+  ]), [findColumn]);
+
+  const heatStageCol = useMemo(() => findColumn([
+    /^Heat Stage$/i,
+    /^Heat Stage 1$/i,
+    /heat.*stage.*sec/i,
+    /^Heat Stage 1 \(sec\)$/i,
+  ]), [findColumn]);
+
+  const coolStageCol = useMemo(() => findColumn([
+    /^Cool Stage$/i,
+    /^Cool Stage 1$/i,
+    /cool.*stage.*sec/i,
+    /^Cool Stage 1 \(sec\)$/i,
+  ]), [findColumn]);
+
+  const compressorStageCol = useMemo(() => findColumn([
+    /^Compressor Stage$/i,
+    /^Compressor Stage 1$/i,
+    /compressor.*stage.*sec/i,
+    /^Compressor Stage 1 \(sec\)$/i,
+  ]), [findColumn]);
+
+  const auxHeatCol = useMemo(() => findColumn([
+    /^Aux Heat 1$/i,
+    /aux.*heat.*sec/i,
+    /^Aux Heat 1 \(sec\)$/i,
+    /^Aux Heat 1\s*\(Fan\s*\(sec\)\)$/i,
+  ]), [findColumn]);
+
+  const outdoorTempCol = useMemo(() => findColumn([
+    /^Outdoor Tel$/i,
+    /outdoor.*temp/i,
+    /^Outdoor Temp \(F\)$/i,
+  ]), [findColumn]);
+
+  const dateCol = useMemo(() => findColumn([/^Date$/i]), [findColumn]);
+  const timeCol = useMemo(() => findColumn([/^Time$/i]), [findColumn]);
+
+  // Calculate metrics - moved to top level
+  const SHORT_CYCLE_THRESHOLD = 300; // seconds
+
+  // 1. Heat Differential Analysis
+  const heatDifferentialData = useMemo(() => {
+    if (!parsedCsvRows || parsedCsvRows.length === 0 || !currentTempCol || !heatSetTempCol) return null;
+    return parsedCsvRows
+      .filter(row => {
+        const current = parseFloat(row[currentTempCol]);
+        const setpoint = parseFloat(row[heatSetTempCol]);
+        return !isNaN(current) && !isNaN(setpoint) && current > 0 && setpoint > 0;
+      })
+      .slice(0, 500) // Limit to 500 points for performance
+      .map((row, idx) => {
+        const current = parseFloat(row[currentTempCol]);
+        const setpoint = parseFloat(row[heatSetTempCol]);
+        return {
+          x: idx,
+          current,
+          setpoint,
+          differential: current - setpoint,
+        };
+      });
+  }, [parsedCsvRows, currentTempCol, heatSetTempCol]);
+
+  // 2. Short Cycling Analysis
+  const shortCyclingData = useMemo(() => {
+    if (!parsedCsvRows || parsedCsvRows.length === 0 || (!heatStageCol && !coolStageCol && !compressorStageCol)) return null;
+    const shortCycles = [];
+    parsedCsvRows.forEach((row, idx) => {
+      const heatRuntime = heatStageCol ? parseFloat(row[heatStageCol]) || 0 : 0;
+      const coolRuntime = coolStageCol ? parseFloat(row[coolStageCol]) || 0 : 0;
+      const compressorRuntime = compressorStageCol ? parseFloat(row[compressorStageCol]) || 0 : 0;
+      
+      const totalRuntime = heatRuntime + coolRuntime + compressorRuntime;
+      if (totalRuntime > 0 && totalRuntime < SHORT_CYCLE_THRESHOLD) {
+        // Format timestamp to HH:MM for cleaner X-axis
+        let timestamp = `Point ${idx + 1}`;
+        if (dateCol && timeCol && row[timeCol]) {
+          const timeStr = String(row[timeCol]);
+          const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+          if (timeMatch) {
+            timestamp = `${timeMatch[1]}:${timeMatch[2]}`;
+          } else {
+            timestamp = timeStr;
+          }
+        }
+        shortCycles.push({
+          timestamp,
+          heatRuntime,
+          coolRuntime,
+          compressorRuntime,
+          totalRuntime,
+        });
+      }
+    });
+    return shortCycles.slice(0, 100); // Limit for display
+  }, [parsedCsvRows, heatStageCol, coolStageCol, compressorStageCol, dateCol, timeCol]);
+
+  // 3. Runtime Analysis (per day)
+  const runtimeAnalysisData = useMemo(() => {
+    if (!parsedCsvRows || parsedCsvRows.length === 0 || (!heatStageCol && !coolStageCol && !compressorStageCol) || !dateCol) return null;
+    const dailyRuntimes = {};
+    parsedCsvRows.forEach(row => {
+      const date = row[dateCol];
+      if (!date) return;
+      if (!dailyRuntimes[date]) {
+        dailyRuntimes[date] = { date, heat: 0, cool: 0, compressor: 0, auxHeat: 0 };
+      }
+      const heatRuntime = heatStageCol ? parseFloat(row[heatStageCol]) || 0 : 0;
+      const coolRuntime = coolStageCol ? parseFloat(row[coolStageCol]) || 0 : 0;
+      const compressorRuntime = compressorStageCol ? parseFloat(row[compressorStageCol]) || 0 : 0;
+      const auxHeatRuntime = auxHeatCol ? parseFloat(row[auxHeatCol]) || 0 : 0;
+      dailyRuntimes[date].heat += heatRuntime;
+      dailyRuntimes[date].cool += coolRuntime;
+      dailyRuntimes[date].compressor += compressorRuntime;
+      dailyRuntimes[date].auxHeat += auxHeatRuntime;
+    });
+    return Object.values(dailyRuntimes)
+      .map(day => ({
+        date: day.date,
+        heatHours: (day.heat / 3600).toFixed(1),
+        coolHours: (day.cool / 3600).toFixed(1),
+        compressorHours: (day.compressor / 3600).toFixed(1),
+        auxHeatHours: (day.auxHeat / 3600).toFixed(1),
+        totalHours: ((day.heat + day.cool + day.compressor + day.auxHeat) / 3600).toFixed(1),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [parsedCsvRows, heatStageCol, coolStageCol, compressorStageCol, auxHeatCol, dateCol]);
+
+  // 4. Low Outdoor Temp Analysis (Compressor Min Outdoor Temp behavior)
+  const lowTempAnalysisData = useMemo(() => {
+    if (!parsedCsvRows || parsedCsvRows.length === 0 || !outdoorTempCol || !compressorStageCol) return null;
+    return parsedCsvRows
+      .filter(row => {
+        const outdoorTemp = parseFloat(row[outdoorTempCol]);
+        return !isNaN(outdoorTemp) && outdoorTemp < 40; // Focus on cold weather
+      })
+      .slice(0, 200) // Limit for display
+      .map((row, idx) => {
+        const outdoorTemp = parseFloat(row[outdoorTempCol]);
+        const compressorRuntime = parseFloat(row[compressorStageCol]) || 0;
+        const timestamp = dateCol && timeCol 
+          ? `${row[dateCol]} ${row[timeCol]}` 
+          : `Point ${idx + 1}`;
+        return {
+          timestamp,
+          outdoorTemp,
+          compressorRuntime,
+          compressorHours: (compressorRuntime / 3600).toFixed(2),
+        };
+      })
+      .sort((a, b) => a.outdoorTemp - b.outdoorTemp);
+  }, [parsedCsvRows, outdoorTempCol, compressorStageCol, dateCol, timeCol]);
 
   const systemConfig = { 
     capacity: activeZone?.capacity || userSettings?.capacity || 24, 
@@ -675,16 +865,38 @@ const SystemPerformanceAnalyzer = () => {
         }
         
         // Store parsed CSV data persistently (zone-specific)
-        localStorage.setItem(getZoneStorageKey('spa_parsedCsvData'), JSON.stringify(data));
-        localStorage.setItem(getZoneStorageKey('spa_uploadTimestamp'), new Date().toISOString());
-        localStorage.setItem(getZoneStorageKey('spa_filename'), file.name);
+        // Store only the sampled/analysis data to avoid localStorage quota issues
+        // The full dataset is too large for large CSV files
+        try {
+          // Clear old data for this zone to free up space
+          try {
+            localStorage.removeItem(getZoneStorageKey('spa_parsedCsvData'));
+          } catch (e) {
+            // Ignore errors when clearing
+          }
+          
+          // Store only the data used for analysis (sampled data) to save space
+          const dataToStore = dataForAnalysis.length < data.length ? dataForAnalysis : data;
+          localStorage.setItem(getZoneStorageKey('spa_parsedCsvData'), JSON.stringify(dataToStore));
+          localStorage.setItem(getZoneStorageKey('spa_uploadTimestamp'), new Date().toISOString());
+          localStorage.setItem(getZoneStorageKey('spa_filename'), file.name);
+        } catch (storageError) {
+          console.warn('Failed to store CSV data in localStorage (quota exceeded):', storageError);
+          // Show user-friendly error but don't block analysis
+          setError('Warning: Could not save CSV data to browser storage (storage quota exceeded). Analysis will continue, but you may need to re-upload the file if you refresh the page.');
+          // Still set the state so analysis can proceed
+        }
         
         // Update zone to mark it as having CSV data
         const updatedZones = zones.map(z => 
           z.id === activeZoneId ? { ...z, hasCSV: true } : z
         );
         setZones(updatedZones);
-        localStorage.setItem("zones", JSON.stringify(updatedZones));
+        try {
+          localStorage.setItem("zones", JSON.stringify(updatedZones));
+        } catch (e) {
+          console.warn('Failed to store zones in localStorage:', e);
+        }
         
         setParsedCsvRows(data);
         setDataForAnalysisRows(dataForAnalysis);
@@ -693,16 +905,28 @@ const SystemPerformanceAnalyzer = () => {
         
         // Run diagnostic analysis (zone-specific)
         const diagnostics = analyzeThermostatIssues(data);
-        localStorage.setItem(getZoneStorageKey('spa_diagnostics'), JSON.stringify(diagnostics));
+        try {
+          localStorage.setItem(getZoneStorageKey('spa_diagnostics'), JSON.stringify(diagnostics));
+        } catch (e) {
+          console.warn('Failed to store diagnostics in localStorage:', e);
+        }
         
         // Keep only the most recent result (zone-specific)
         setResultsHistory([results]);
-        localStorage.setItem(getZoneStorageKey('spa_resultsHistory'), JSON.stringify([results]));
+        try {
+          localStorage.setItem(getZoneStorageKey('spa_resultsHistory'), JSON.stringify([results]));
+        } catch (e) {
+          console.warn('Failed to store results history in localStorage:', e);
+        }
         // Dispatch custom event so AskJoule can update immediately
         window.dispatchEvent(new CustomEvent('analyzerDataUpdated'));
         // Add corresponding label - only keep one (zone-specific)
         setLabels(['Result 1']);
-        localStorage.setItem(getZoneStorageKey('spa_labels'), JSON.stringify(['Result 1']));
+        try {
+          localStorage.setItem(getZoneStorageKey('spa_labels'), JSON.stringify(['Result 1']));
+        } catch (e) {
+          console.warn('Failed to store labels in localStorage:', e);
+        }
         setHeatLossFactor(results.heatLossFactor);
         // ☦️ LOAD-BEARING: Also store in userSettings so it persists across page reloads
         // Why this exists: heatLossFactor in React state (App.jsx) doesn't persist. If user
@@ -1379,9 +1603,16 @@ const SystemPerformanceAnalyzer = () => {
                   <div className="p-3 bg-gray-700/30 dark:bg-gray-800/30 rounded-lg">
                     <p className="font-bold text-gray-200 mb-1">Total Heat Loss at Design Conditions</p>
                     <p className="text-2xl font-bold text-blue-400">
-                      {(result.heatLossTotal !== null && result.heatLossTotal !== undefined) ? result.heatLossTotal.toLocaleString(undefined, { maximumFractionDigits: 0 }) : 'N/A'} BTU/hr
+                      {(result.heatLossFactor !== null && result.heatLossFactor !== undefined) 
+                        ? (result.heatLossFactor * 70).toLocaleString(undefined, { maximumFractionDigits: 0 }) 
+                        : 'N/A'} BTU/hr
                     </p>
-                    <p className="text-xs mt-2">Calculated at 70°F indoor / 0°F outdoor (ΔT = 70°F)</p>
+                    <p className="text-xs mt-2">
+                      Calculated from CSV analysis: {result.heatLossFactor?.toFixed(1) || 'N/A'} BTU/hr/°F × 70°F ΔT
+                    </p>
+                    <p className="text-xs mt-1 text-gray-400">
+                      (70°F indoor / 0°F outdoor design condition)
+                    </p>
                   </div>
 
                   {/* What is ΔT */}
@@ -1395,11 +1626,14 @@ const SystemPerformanceAnalyzer = () => {
                     <div>
                       <p className="font-bold text-gray-200 mb-2">📏 Normalized Per-Square-Foot Factor</p>
                       <p className="mb-2">
-                        <strong>Your home:</strong> {heatLossPerSqFt.toFixed(3)} BTU/hr/°F per sq ft
+                        <strong>Your home (from CSV analysis):</strong> {heatLossPerSqFt.toFixed(3)} BTU/hr/°F per sq ft
                         {heatLossPerSqFt < 0.25 && <span className="text-green-400 ml-2">✓ Excellent insulation</span>}
                         {heatLossPerSqFt >= 0.25 && heatLossPerSqFt < 0.35 && <span className="text-blue-400 ml-2">✓ Good insulation</span>}
                         {heatLossPerSqFt >= 0.35 && heatLossPerSqFt < 0.45 && <span className="text-yellow-400 ml-2">○ Average insulation</span>}
                         {heatLossPerSqFt >= 0.45 && <span className="text-orange-400 ml-2">! Consider upgrades</span>}
+                      </p>
+                      <p className="text-xs text-gray-400 mb-2 italic">
+                        Calculated from: {result.heatLossFactor.toFixed(1)} BTU/hr/°F (from CSV) ÷ {squareFeet.toLocaleString()} sq ft = {heatLossPerSqFt.toFixed(3)} BTU/hr/°F per sq ft
                       </p>
                       <div className="bg-gray-800/40 p-3 rounded-lg text-sm space-y-1 mb-2">
                         <p className="font-semibold text-gray-200 mb-1">📊 Benchmarks:</p>
@@ -1493,9 +1727,10 @@ const SystemPerformanceAnalyzer = () => {
                             </p>
                             <div className="bg-gray-800/40 p-2 rounded text-xs space-y-1">
                               <p><strong>For a {squareFeet.toLocaleString()} sq ft {buildingType.toLowerCase()}:</strong></p>
-                              <p>• Expected factor (based on your settings): ~{baselineFactor.toFixed(0)} BTU/hr/°F</p>
+                              <p>• Expected factor (theoretical, based on your settings): ~{baselineFactor.toFixed(0)} BTU/hr/°F</p>
                               <p className="text-xs text-gray-400">  (Calculated from: {squareFeet.toLocaleString()} sq ft × 22.67 × {insulationLevel.toFixed(2)} insulation × {homeShape.toFixed(2)} shape × {ceilingMultiplier.toFixed(2)} ceiling ÷ 70)</p>
-                              <p>• Your actual factor (from CSV analysis): <strong className="text-blue-300">{result.heatLossFactor.toFixed(1)} BTU/hr/°F</strong></p>
+                              <p>• <strong className="text-emerald-300">Your actual factor (from ecobee CSV analysis):</strong> <strong className="text-blue-300">{result.heatLossFactor.toFixed(1)} BTU/hr/°F</strong></p>
+                              <p className="text-xs text-gray-400">  (Derived from actual runtime data and temperature changes in your CSV file)</p>
                               {result.heatLossFactor < shapeAdjustedFactor * 0.9 ? (
                                 <p className="text-green-400">✓ Better than expected—excellent insulation and air sealing!</p>
                               ) : result.heatLossFactor > shapeAdjustedFactor * 1.1 ? (
@@ -1590,6 +1825,142 @@ const SystemPerformanceAnalyzer = () => {
                 </div>
               </details>
 
+              {/* Live Math Calculations Pulldown */}
+              {result.heatLossFactor != null && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-6">
+                  <button
+                    onClick={() => setShowCalculations(!showCalculations)}
+                    className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                        <Calculator size={24} className="text-white" />
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
+                    </div>
+                    {showCalculations ? (
+                      <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                    )}
+                  </button>
+
+                  {showCalculations && (
+                    <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                      {/* Heat Loss Factor Calculation */}
+                      <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                        <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Heat Loss Factor Calculation (Coast-Down Method)</h4>
+                        <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                          <div>
+                            <span className="font-semibold">Method:</span> Coast-down thermal decay analysis
+                          </div>
+                          <div>
+                            <span className="font-semibold">1. Find periods where heating is OFF:</span>
+                            <div className="ml-4 mt-1 text-xs">
+                              Identify time periods in CSV where heat pump/auxiliary heat = 0 seconds
+                            </div>
+                          </div>
+                          <div>
+                            <span className="font-semibold">2. Measure temperature decay:</span>
+                            <div className="ml-4 mt-1 text-xs">
+                              Calculate thermal decay rate K from indoor temperature drop over time
+                            </div>
+                          </div>
+                          <div>
+                            <span className="font-semibold">3. Estimate thermal mass:</span>
+                            <div className="ml-4 mt-1 text-xs">
+                              Thermal Mass = 8 BTU/°F per sq ft × {squareFeet.toLocaleString()} sq ft = {(8 * squareFeet).toLocaleString()} BTU/°F
+                            </div>
+                          </div>
+                          <div>
+                            <span className="font-semibold">4. Calculate heat loss factor:</span>
+                            <div className="ml-4 mt-1 text-xs">
+                              Heat Loss Factor = Thermal Mass × Decay Rate
+                            </div>
+                            <div className="ml-4 mt-1 text-blue-600 dark:text-blue-400 font-bold">
+                              Your Result: {result.heatLossFactor.toFixed(1)} BTU/hr/°F
+                            </div>
+                          </div>
+                          <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
+                            <span className="font-semibold">Total Heat Loss at 70°F ΔT:</span>
+                            <div className="ml-4 mt-1 text-blue-600 dark:text-blue-400 font-bold">
+                              {result.heatLossFactor.toFixed(1)} × 70 = {(result.heatLossFactor * 70).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Balance Point Calculation */}
+                      {result.balancePoint != null && isFinite(result.balancePoint) && (
+                        <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Balance Point Calculation</h4>
+                          <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                            <div>
+                              <span className="font-semibold">Method:</span> Find outdoor temperature where auxiliary heat activates
+                            </div>
+                            <div>
+                              <span className="font-semibold">1. Find auxiliary heat events:</span>
+                              <div className="ml-4 mt-1 text-xs">
+                                Identify CSV rows where auxiliary heat runtime &gt; 0 seconds
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-semibold">2. Find maximum outdoor temp with aux heat:</span>
+                              <div className="ml-4 mt-1 text-xs">
+                                Balance Point = max(outdoor temp where aux heat was used)
+                              </div>
+                            </div>
+                            <div className="pt-2 border-t border-green-300 dark:border-green-700">
+                              <span className="font-semibold">Your Balance Point:</span>
+                              <div className="ml-4 mt-1 text-green-600 dark:text-green-400 font-bold">
+                                {result.balancePoint.toFixed(1)}°F
+                              </div>
+                              <div className="ml-4 mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                Below this temperature, your heat pump needs auxiliary heat to maintain indoor temperature
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Percentile Calculation */}
+                      {(() => {
+                        const calculatePercentile = (factor) => {
+                          // Simplified percentile calculation based on typical distribution
+                          if (factor < 400) return 95;
+                          if (factor < 500) return 85;
+                          if (factor < 600) return 70;
+                          if (factor < 700) return 50;
+                          if (factor < 800) return 35;
+                          if (factor < 1000) return 20;
+                          return 10;
+                        };
+                        const percentile = calculatePercentile(result.heatLossFactor);
+                        return (
+                          <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                            <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Efficiency Percentile</h4>
+                            <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                              <div>
+                                <span className="font-semibold">Your Heat Loss Factor:</span> {result.heatLossFactor.toFixed(1)} BTU/hr/°F
+                              </div>
+                              <div>
+                                <span className="font-semibold">Percentile Rank:</span>
+                                <div className="ml-4 mt-1 text-purple-600 dark:text-purple-400 font-bold">
+                                  {percentile >= 50 ? `Top ${percentile}%` : `Bottom ${100 - percentile}%`}
+                                </div>
+                              </div>
+                              <div className="pt-2 border-t border-purple-300 dark:border-purple-700 text-xs text-gray-600 dark:text-gray-400">
+                                Based on typical U.S. residential building distribution. Lower heat loss factor = higher efficiency percentile.
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div className="flex flex-col gap-3 mt-6">
                 <input
@@ -1674,197 +2045,7 @@ const SystemPerformanceAnalyzer = () => {
           </p>
           
           {(() => {
-            // Helper: Find column names (handle both normalized and raw ecobee formats)
-            const findColumn = (patterns) => {
-              if (!parsedCsvRows || parsedCsvRows.length === 0) return null;
-              const sampleRow = parsedCsvRows[0];
-              const availableCols = Object.keys(sampleRow);
-              for (const pattern of patterns) {
-                const found = availableCols.find(col => pattern.test(col));
-                if (found) return found;
-              }
-              return null;
-            };
-
-            const currentTempCol = findColumn([
-              /^Current Ten$/i,
-              /^(thermostat|indoor|current).*temp/i,
-              /^Thermostat Temperature \(F\)$/i,
-            ]);
-            const heatSetTempCol = findColumn([
-              /^Heat Set$/i,
-              /^Heat Setpoint$/i,
-              /^Heat Set Temp$/i,
-              /heat.*set.*temp/i,
-              /heat.*setpoint/i,
-            ]);
-            const coolSetTempCol = findColumn([
-              /^Cool Set$/i,
-              /^Cool Setpoint$/i,
-              /^Cool Set Temp$/i,
-              /cool.*set.*temp/i,
-              /cool.*setpoint/i,
-            ]);
-            const heatStageCol = findColumn([
-              /^Heat Stage$/i,
-              /^Heat Stage 1$/i,
-              /heat.*stage.*sec/i,
-              /^Heat Stage 1 \(sec\)$/i,
-            ]);
-            const coolStageCol = findColumn([
-              /^Cool Stage$/i,
-              /^Cool Stage 1$/i,
-              /cool.*stage.*sec/i,
-              /^Cool Stage 1 \(sec\)$/i,
-            ]);
-            const compressorStageCol = findColumn([
-              /^Compressor Stage$/i,
-              /^Compressor Stage 1$/i,
-              /compressor.*stage.*sec/i,
-              /^Compressor Stage 1 \(sec\)$/i,
-            ]);
-            const auxHeatCol = findColumn([
-              /^Aux Heat 1$/i,
-              /aux.*heat.*sec/i,
-              /^Aux Heat 1 \(sec\)$/i,
-              /^Aux Heat 1\s*\(Fan\s*\(sec\)\)$/i,
-            ]);
-            const outdoorTempCol = findColumn([
-              /^Outdoor Tel$/i,
-              /outdoor.*temp/i,
-              /^Outdoor Temp \(F\)$/i,
-            ]);
-            const dateCol = findColumn([/^Date$/i]);
-            const timeCol = findColumn([/^Time$/i]);
-
-            // Calculate metrics
-            const SHORT_CYCLE_THRESHOLD = 300; // seconds
-
-            // 1. Heat Differential Analysis
-            const heatDifferentialData = useMemo(() => {
-              if (!currentTempCol || !heatSetTempCol) return null;
-              return parsedCsvRows
-                .filter(row => {
-                  const current = parseFloat(row[currentTempCol]);
-                  const setpoint = parseFloat(row[heatSetTempCol]);
-                  return !isNaN(current) && !isNaN(setpoint) && current > 0 && setpoint > 0;
-                })
-                .slice(0, 500) // Limit to 500 points for performance
-                .map((row, idx) => {
-                  const current = parseFloat(row[currentTempCol]);
-                  const setpoint = parseFloat(row[heatSetTempCol]);
-                  const diff = current - setpoint;
-                  // Format timestamp to HH:MM for cleaner X-axis
-                  let timestamp = `Point ${idx + 1}`;
-                  if (dateCol && timeCol && row[timeCol]) {
-                    const timeStr = String(row[timeCol]);
-                    // Extract HH:MM from time string (handles formats like "14:30:00" or "14:30")
-                    const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
-                    if (timeMatch) {
-                      timestamp = `${timeMatch[1]}:${timeMatch[2]}`;
-                    } else {
-                      timestamp = timeStr;
-                    }
-                  }
-                  return {
-                    timestamp,
-                    currentTemp: current,
-                    setTemp: setpoint,
-                    differential: diff,
-                  };
-                });
-            }, [parsedCsvRows, currentTempCol, heatSetTempCol, dateCol, timeCol]);
-
-            // 2. Short Cycling Analysis
-            const shortCyclingData = useMemo(() => {
-              if (!heatStageCol && !coolStageCol && !compressorStageCol) return null;
-              const shortCycles = [];
-              parsedCsvRows.forEach((row, idx) => {
-                const heatRuntime = heatStageCol ? parseFloat(row[heatStageCol]) || 0 : 0;
-                const coolRuntime = coolStageCol ? parseFloat(row[coolStageCol]) || 0 : 0;
-                const compressorRuntime = compressorStageCol ? parseFloat(row[compressorStageCol]) || 0 : 0;
-                
-                const totalRuntime = heatRuntime + coolRuntime + compressorRuntime;
-                if (totalRuntime > 0 && totalRuntime < SHORT_CYCLE_THRESHOLD) {
-                  // Format timestamp to HH:MM for cleaner X-axis
-                  let timestamp = `Point ${idx + 1}`;
-                  if (dateCol && timeCol && row[timeCol]) {
-                    const timeStr = String(row[timeCol]);
-                    const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
-                    if (timeMatch) {
-                      timestamp = `${timeMatch[1]}:${timeMatch[2]}`;
-                    } else {
-                      timestamp = timeStr;
-                    }
-                  }
-                  shortCycles.push({
-                    timestamp,
-                    heatRuntime,
-                    coolRuntime,
-                    compressorRuntime,
-                    totalRuntime,
-                  });
-                }
-              });
-              return shortCycles.slice(0, 100); // Limit for display
-            }, [parsedCsvRows, heatStageCol, coolStageCol, compressorStageCol, dateCol, timeCol]);
-
-            // 3. Runtime Analysis (per day)
-            const runtimeAnalysisData = useMemo(() => {
-              if (!heatStageCol && !coolStageCol && !compressorStageCol || !dateCol) return null;
-              const dailyRuntimes = {};
-              parsedCsvRows.forEach(row => {
-                const date = row[dateCol];
-                if (!date) return;
-                if (!dailyRuntimes[date]) {
-                  dailyRuntimes[date] = { date, heat: 0, cool: 0, compressor: 0, auxHeat: 0 };
-                }
-                const heatRuntime = heatStageCol ? parseFloat(row[heatStageCol]) || 0 : 0;
-                const coolRuntime = coolStageCol ? parseFloat(row[coolStageCol]) || 0 : 0;
-                const compressorRuntime = compressorStageCol ? parseFloat(row[compressorStageCol]) || 0 : 0;
-                const auxHeatRuntime = auxHeatCol ? parseFloat(row[auxHeatCol]) || 0 : 0;
-                dailyRuntimes[date].heat += heatRuntime;
-                dailyRuntimes[date].cool += coolRuntime;
-                dailyRuntimes[date].compressor += compressorRuntime;
-                dailyRuntimes[date].auxHeat += auxHeatRuntime;
-              });
-              return Object.values(dailyRuntimes)
-                .map(day => ({
-                  date: day.date,
-                  heatHours: (day.heat / 3600).toFixed(1),
-                  coolHours: (day.cool / 3600).toFixed(1),
-                  compressorHours: (day.compressor / 3600).toFixed(1),
-                  auxHeatHours: (day.auxHeat / 3600).toFixed(1),
-                  totalHours: ((day.heat + day.cool + day.compressor + day.auxHeat) / 3600).toFixed(1),
-                }))
-                .sort((a, b) => a.date.localeCompare(b.date));
-            }, [parsedCsvRows, heatStageCol, coolStageCol, compressorStageCol, auxHeatCol, dateCol]);
-
-            // 4. Low Outdoor Temp Analysis (Compressor Min Outdoor Temp behavior)
-            const lowTempAnalysisData = useMemo(() => {
-              if (!outdoorTempCol || !compressorStageCol) return null;
-              return parsedCsvRows
-                .filter(row => {
-                  const outdoorTemp = parseFloat(row[outdoorTempCol]);
-                  return !isNaN(outdoorTemp) && outdoorTemp < 40; // Focus on cold weather
-                })
-                .slice(0, 200) // Limit for display
-                .map((row, idx) => {
-                  const outdoorTemp = parseFloat(row[outdoorTempCol]);
-                  const compressorRuntime = parseFloat(row[compressorStageCol]) || 0;
-                  const timestamp = dateCol && timeCol 
-                    ? `${row[dateCol]} ${row[timeCol]}` 
-                    : `Point ${idx + 1}`;
-                  return {
-                    timestamp,
-                    outdoorTemp,
-                    compressorRuntime,
-                    compressorHours: (compressorRuntime / 3600).toFixed(2),
-                  };
-                })
-                .sort((a, b) => a.outdoorTemp - b.outdoorTemp);
-            }, [parsedCsvRows, outdoorTempCol, compressorStageCol, dateCol, timeCol]);
-
+            // All hooks are now at the top level - just return the JSX
             return (
               <div className="space-y-8">
                 {/* Heat Differential Graph */}

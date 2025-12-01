@@ -1,27 +1,27 @@
 /**
- * ProStat Bridge API Client
+ * Joule Bridge API Client
  * Communicates with the Raspberry Pi backend running the HAP controller
  *
  * This replaces the direct Ecobee API calls with local HAP protocol calls
  */
 
-const PROSTAT_BRIDGE_URL =
-  import.meta.env.VITE_PROSTAT_BRIDGE_URL || "http://localhost:8080";
+const JOULE_BRIDGE_URL =
+  import.meta.env.VITE_JOULE_BRIDGE_URL || "http://localhost:8080";
 
 /**
- * Get ProStat Bridge URL from settings or use default
+ * Get Joule Bridge URL from settings or use default
  */
 function getBridgeUrl() {
   try {
-    const url = localStorage.getItem("prostatBridgeUrl");
-    return url || PROSTAT_BRIDGE_URL;
+    const url = localStorage.getItem("jouleBridgeUrl");
+    return url || JOULE_BRIDGE_URL;
   } catch {
-    return PROSTAT_BRIDGE_URL;
+    return JOULE_BRIDGE_URL;
   }
 }
 
 /**
- * Make API request to ProStat Bridge
+ * Make API request to Joule Bridge
  */
 async function bridgeRequest(endpoint, options = {}) {
   const url = getBridgeUrl();
@@ -35,7 +35,7 @@ async function bridgeRequest(endpoint, options = {}) {
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`ProStat Bridge error: ${response.status} ${error}`);
+    throw new Error(`Joule Bridge error: ${response.status} ${error}`);
   }
 
   return response.json();
@@ -72,7 +72,7 @@ export async function pairDevice(deviceId, pairingCode) {
     if (!pairedDevices.includes(deviceId)) {
       pairedDevices.push(deviceId);
       localStorage.setItem(
-        "prostatPairedDevices",
+        "joulePairedDevices",
         JSON.stringify(pairedDevices)
       );
     }
@@ -96,7 +96,7 @@ export async function unpairDevice(deviceId) {
 
     // Remove from stored list
     const pairedDevices = getPairedDevices().filter((id) => id !== deviceId);
-    localStorage.setItem("prostatPairedDevices", JSON.stringify(pairedDevices));
+    localStorage.setItem("joulePairedDevices", JSON.stringify(pairedDevices));
   } catch (error) {
     console.error("Error unpairing device:", error);
     throw error;
@@ -108,7 +108,7 @@ export async function unpairDevice(deviceId) {
  */
 export function getPairedDevices() {
   try {
-    const stored = localStorage.getItem("prostatPairedDevices");
+    const stored = localStorage.getItem("joulePairedDevices");
     return stored ? JSON.parse(stored) : [];
   } catch {
     return [];
@@ -177,7 +177,7 @@ export async function setMode(deviceId, mode) {
 }
 
 /**
- * Check if ProStat Bridge is available
+ * Check if Joule Bridge is available
  */
 export async function checkBridgeHealth() {
   try {
@@ -197,7 +197,7 @@ export async function checkBridgeHealth() {
  */
 export function getPrimaryDeviceId() {
   try {
-    const stored = localStorage.getItem("prostatPrimaryDeviceId");
+    const stored = localStorage.getItem("joulePrimaryDeviceId");
     if (stored) return stored;
 
     // Fallback to first paired device
@@ -213,7 +213,7 @@ export function getPrimaryDeviceId() {
  */
 export function setPrimaryDeviceId(deviceId) {
   try {
-    localStorage.setItem("prostatPrimaryDeviceId", deviceId);
+    localStorage.setItem("joulePrimaryDeviceId", deviceId);
   } catch (error) {
     console.warn("Failed to store primary device ID:", error);
   }
@@ -349,3 +349,4 @@ export async function startDustKickerCycle() {
     throw error;
   }
 }
+

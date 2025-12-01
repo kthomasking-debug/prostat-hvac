@@ -6,15 +6,14 @@ import React, {
   useCallback,
 } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import ThermostatScheduleCard from "../components/ThermostatScheduleCard";
 import {
   loadThermostatSettings,
   saveThermostatSettings,
 } from "../lib/thermostatSettings";
 import { useEcobee } from "../hooks/useEcobee";
 import { getEcobeeCredentials } from "../lib/ecobeeApi";
-import { useProstatBridge } from "../hooks/useProstatBridge";
-import { checkBridgeHealth } from "../lib/prostatBridgeApi";
+import { useJouleBridge } from "../hooks/useJouleBridge";
+import { checkBridgeHealth } from "../lib/jouleBridgeApi";
 import { useProstatRelay } from "../hooks/useProstatRelay";
 import { useBlueair } from "../hooks/useBlueair";
 import {
@@ -156,7 +155,7 @@ const SmartThermostatDemo = () => {
   
   // ProStat Bridge (HomeKit HAP) - Preferred method
   const [bridgeAvailable, setBridgeAvailable] = useState(false);
-  const prostatBridge = useProstatBridge(null, 5000); // Poll every 5 seconds (faster than cloud)
+  const jouleBridge = useJouleBridge(null, 5000); // Poll every 5 seconds (faster than cloud)
   
   // ProStat Bridge Relay Control (Dehumidifier)
   const prostatRelay = useProstatRelay(2, 5000); // Channel 2 (Y2 terminal), poll every 5 seconds
@@ -176,8 +175,8 @@ const SmartThermostatDemo = () => {
   const [simulatedIsAway, setSimulatedIsAway] = useState(false);
   
   // Determine which integration to use (ProStat Bridge preferred)
-  const useProstatIntegration = bridgeAvailable && prostatBridge.connected;
-  const activeIntegration = useProstatIntegration ? prostatBridge : (useEcobeeIntegration ? ecobee : null);
+  const useJouleIntegration = bridgeAvailable && jouleBridge.connected;
+  const activeIntegration = useJouleIntegration ? jouleBridge : (useEcobeeIntegration ? ecobee : null);
   
   // Use ProStat Bridge or Ecobee data if available, otherwise use simulated
   const currentTemp = activeIntegration && activeIntegration.temperature !== null 
@@ -250,7 +249,6 @@ const SmartThermostatDemo = () => {
   const [aiResponse, setAiResponse] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [_isSpeaking, setIsSpeaking] = useState(false);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   // Persist speech enabled state to localStorage
   const [speechEnabled, setSpeechEnabled] = useState(() => {
@@ -799,7 +797,7 @@ const SmartThermostatDemo = () => {
 
   // Update system state for interlock logic when data changes
   useEffect(() => {
-    if (bridgeAvailable && prostatBridge.connected && prostatRelay.connected) {
+    if (bridgeAvailable && jouleBridge.connected && prostatRelay.connected) {
       // Update system state with current readings
       prostatRelay.updateState({
         indoor_temp: currentTemp,
@@ -811,7 +809,7 @@ const SmartThermostatDemo = () => {
         console.warn('Failed to update system state:', err);
       });
     }
-  }, [bridgeAvailable, prostatBridge.connected, prostatRelay.connected, currentTemp, currentHumidity, mode, thermostatState.status, prostatRelay]);
+  }, [bridgeAvailable, jouleBridge.connected, prostatRelay.connected, currentTemp, currentHumidity, mode, thermostatState.status, prostatRelay]);
 
   // Get Groq model and location for status bar
   const groqModel = useMemo(() => {
@@ -1012,11 +1010,67 @@ const SmartThermostatDemo = () => {
               
               {/* Schedule Button */}
               <button
-                onClick={() => setShowScheduleModal(true)}
+                onClick={() => navigate('/config#schedule')}
                 className="btn-glass w-full flex items-center justify-center gap-2"
               >
                 <Clock className="w-4 h-4" />
                 <span className="text-sm font-medium">Schedule</span>
+              </button>
+              
+              {/* ASHRAE Standards Button */}
+              <button
+                onClick={() => {
+                  // ASHRAE Standard 55 recommendations (50% RH):
+                  // Winter heating: 68.5-74.5°F (use 70°F as middle) for day, 68°F for night
+                  // Summer cooling: 73-79°F (use 76°F as middle) for day, 78°F for night
+                  const thermostatSettings = loadThermostatSettings();
+                  if (thermostatSettings?.comfortSettings) {
+                    // Update home comfort setting (daytime)
+                    if (!thermostatSettings.comfortSettings.home) {
+                      thermostatSettings.comfortSettings.home = {
+                        heatSetPoint: 70,
+                        coolSetPoint: 76,
+                        humiditySetPoint: 50,
+                        fanMode: "auto",
+                        sensors: ["main"],
+                      };
+                    } else {
+                      thermostatSettings.comfortSettings.home.heatSetPoint = 70;
+                      thermostatSettings.comfortSettings.home.coolSetPoint = 76;
+                    }
+                    
+                    // Update sleep comfort setting (nighttime)
+                    if (!thermostatSettings.comfortSettings.sleep) {
+                      thermostatSettings.comfortSettings.sleep = {
+                        heatSetPoint: 68,
+                        coolSetPoint: 78,
+                        humiditySetPoint: 50,
+                        fanMode: "auto",
+                        sensors: ["main"],
+                      };
+                    } else {
+                      thermostatSettings.comfortSettings.sleep.heatSetPoint = 68;
+                      thermostatSettings.comfortSettings.sleep.coolSetPoint = 78;
+                    }
+                    
+                    saveThermostatSettings(thermostatSettings);
+                    window.dispatchEvent(new Event("thermostatSettingsChanged"));
+                    
+                    // Also update userSettings if available
+                    if (setUserSetting) {
+                      setUserSetting("winterThermostat", 70);
+                      setUserSetting("winterThermostatDay", 70);
+                      setUserSetting("winterThermostatNight", 68);
+                      setUserSetting("summerThermostat", 76);
+                      setUserSetting("summerThermostatNight", 78);
+                    }
+                  }
+                }}
+                className="btn-glass w-full flex items-center justify-center gap-2 mt-2"
+                title="Apply ASHRAE Standard 55 thermal comfort recommendations"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span className="text-sm font-medium">ASHRAE 55</span>
               </button>
             </div>
           </div>
@@ -1072,8 +1126,8 @@ const SmartThermostatDemo = () => {
               <span className="text-green-500">● AI Mode Active</span>
               {useProstatIntegration && (
                 <span className="text-muted">
-                  Bridge: <span className={prostatBridge.connected ? "text-green-500" : "text-red-500"}>
-                    {prostatBridge.connected ? "Connected" : "Disconnected"}
+                  Bridge: <span className={jouleBridge.connected ? "text-green-500" : "text-red-500"}>
+                    {jouleBridge.connected ? "Connected" : "Disconnected"}
                   </span>
                 </span>
               )}
@@ -1095,37 +1149,6 @@ const SmartThermostatDemo = () => {
         </div>
       </div>
 
-      {/* Schedule Modal - Outside main container */}
-      {showScheduleModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowScheduleModal(false)}>
-          <div className="glass-card shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 glass-card border-b p-glass flex items-center justify-between z-10">
-              <h2 className="heading-secondary">Thermostat Schedule</h2>
-              <button
-                onClick={() => setShowScheduleModal(false)}
-                className="p-2 hover:opacity-80 rounded-lg transition-all"
-              >
-                <svg className="w-6 h-6 text-high-contrast" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-glass">
-              <ThermostatScheduleCard
-                indoorTemp={userSettings.winterThermostat || 70}
-                daytimeTime={daytimeTime}
-                nighttimeTime={nighttimeTime}
-                nighttimeTemp={nighttimeTemp}
-                onDaytimeTimeChange={setDaytimeTime}
-                onNighttimeTimeChange={setNighttimeTime}
-                onNighttimeTempChange={setNighttimeTemp}
-                onIndoorTempChange={setTargetTemp}
-                setUserSetting={setUserSetting}
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

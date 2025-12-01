@@ -4,7 +4,7 @@ import {
   controlRelay,
   updateSystemState,
   evaluateInterlock,
-} from "../lib/prostatBridgeApi";
+} from "../lib/jouleBridgeApi";
 
 /**
  * React hook for ProStat Bridge relay control (dehumidifier)

@@ -27,8 +27,54 @@ export default defineConfig({
     // Target ES5 for maximum compatibility with Android 4.4 KitKat
     target: "es5",
     chunkSizeWarningLimit: 1500,
-    // Let Vite handle chunking automatically to avoid React dependency issues
-    // Vite will automatically split chunks optimally and maintain correct load order
+    rollupOptions: {
+      output: {
+        // Manual chunk splitting for better caching and parallel loading
+        manualChunks: (id) => {
+          // Split large vendor libraries into separate chunks
+          if (id.includes('node_modules')) {
+            // React and React DOM together (frequently used together)
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor';
+            }
+            // Router
+            if (id.includes('react-router')) {
+              return 'router';
+            }
+            // Large charting library
+            if (id.includes('recharts')) {
+              return 'charts';
+            }
+            // 3D library (only used in specific pages)
+            if (id.includes('three')) {
+              return 'three';
+            }
+            // Animation library (only used in specific components)
+            if (id.includes('framer-motion')) {
+              return 'animations';
+            }
+            // AI/LLM libraries
+            if (id.includes('@ai-sdk') || id.includes('ai/')) {
+              return 'ai';
+            }
+            // Markdown rendering
+            if (id.includes('react-markdown') || id.includes('remark') || id.includes('rehype')) {
+              return 'markdown';
+            }
+            // Syntax highlighting (only used in docs)
+            if (id.includes('react-syntax-highlighter')) {
+              return 'syntax';
+            }
+            // PDF generation (only used in specific features)
+            if (id.includes('jspdf') || id.includes('html2canvas')) {
+              return 'pdf';
+            }
+            // Other node_modules
+            return 'vendor';
+          }
+        },
+      },
+    },
   },
   test: {
     globals: true,

@@ -28,6 +28,7 @@ import {
   calculateAnnualHeatingCostFromHDD,
   calculateAnnualCoolingCostFromCDD,
 } from "./lib/hddData";
+import { useSwipeNavigation } from "./hooks/useSwipeNavigation";
 
 function AppInner() {
   // Splash screen state - skip in test mode
@@ -47,6 +48,9 @@ function AppInner() {
   const { termsAccepted, markTermsAccepted, isLoaded } = useTermsAcceptance();
   const navigate = useNavigate();
   const { mode, setMode } = useMode();
+  
+  // Enable swipe navigation on touch devices
+  useSwipeNavigation();
 
   // Use unified settings manager defaults
   const defaultSettings = useMemo(() => DEFAULT_SETTINGS, []);

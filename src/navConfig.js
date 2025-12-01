@@ -1,33 +1,36 @@
 // src/navConfig.js
-import LandingPage from "./pages/LandingPage";
-import SevenDayCostForecaster from "./pages/SevenDayCostForecaster";
-import HeatPumpEnergyFlow from "./pages/HeatPumpEnergyFlow";
-import SystemPerformanceAnalyzer from "./pages/SystemPerformanceAnalyzer";
-import GasVsHeatPump from "./pages/GasVsHeatPump";
-import HeatPumpChargingCalc from "./pages/HeatPumpChargingCalc";
-import CalculationMethodology from "./pages/CalculationMethodology";
-import HomeDashboard from "./pages/Home";
-import SettingsPage from "./pages/Settings";
-import ThermostatStrategyAnalyzer from "./pages/ThermostatStrategyAnalyzer";
-import MonthlyBudgetPlanner from "./pages/MonthlyBudgetPlanner";
-import ProfessionalMode from "./pages/ProfessionalMode";
-import Onboarding from "./pages/Onboarding";
-import AskJouleHelp from "./pages/AskJouleHelp";
-import ContactorDemo from "./pages/ContactorDemo";
-import SmartThermostatDemo from "./pages/SmartThermostatDemo";
-import AirQualityHMI from "./pages/AirQualityHMI";
-import AgentConsole from "./pages/AgentConsole";
-import UpgradeROIAnalyzer from "./pages/UpgradeROIAnalyzer";
-import AskJouleCommandCenter from "./pages/AskJouleCommandCenter";
-import HeatPumpGuide from "./pages/HeatPumpGuide";
-import ThermostatDiagrams from "./pages/ThermostatDiagrams";
-import SmartThermostatBuildGuide from "./pages/SmartThermostatBuildGuide";
-import MarkdownPage from "./pages/MarkdownPage";
-import Upgrades from "./pages/Upgrades";
-import DocumentationSetupGuides from "./pages/DocumentationSetupGuides";
-import Analysis from "./pages/Analysis";
-import Control from "./pages/Control";
-import Hardware from "./pages/Hardware";
+import { lazy } from "react";
+
+// Lazy load all page components for code splitting and faster initial load
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const SevenDayCostForecaster = lazy(() => import("./pages/SevenDayCostForecaster"));
+const HeatPumpEnergyFlow = lazy(() => import("./pages/HeatPumpEnergyFlow"));
+const SystemPerformanceAnalyzer = lazy(() => import("./pages/SystemPerformanceAnalyzer"));
+const GasVsHeatPump = lazy(() => import("./pages/GasVsHeatPump"));
+const HeatPumpChargingCalc = lazy(() => import("./pages/HeatPumpChargingCalc"));
+const CalculationMethodology = lazy(() => import("./pages/CalculationMethodology"));
+const HomeDashboard = lazy(() => import("./pages/Home"));
+const SettingsPage = lazy(() => import("./pages/Settings"));
+const ThermostatStrategyAnalyzer = lazy(() => import("./pages/ThermostatStrategyAnalyzer"));
+const MonthlyBudgetPlanner = lazy(() => import("./pages/MonthlyBudgetPlanner"));
+const ProfessionalMode = lazy(() => import("./pages/ProfessionalMode"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const AskJouleHelp = lazy(() => import("./pages/AskJouleHelp"));
+const ContactorDemo = lazy(() => import("./pages/ContactorDemo"));
+const SmartThermostatDemo = lazy(() => import("./pages/SmartThermostatDemo"));
+const AirQualityHMI = lazy(() => import("./pages/AirQualityHMI"));
+const AgentConsole = lazy(() => import("./pages/AgentConsole"));
+const UpgradeROIAnalyzer = lazy(() => import("./pages/UpgradeROIAnalyzer"));
+const AskJouleCommandCenter = lazy(() => import("./pages/AskJouleCommandCenter"));
+const HeatPumpGuide = lazy(() => import("./pages/HeatPumpGuide"));
+const ThermostatDiagrams = lazy(() => import("./pages/ThermostatDiagrams"));
+const SmartThermostatBuildGuide = lazy(() => import("./pages/SmartThermostatBuildGuide"));
+const MarkdownPage = lazy(() => import("./pages/MarkdownPage"));
+const Upgrades = lazy(() => import("./pages/Upgrades"));
+const DocumentationSetupGuides = lazy(() => import("./pages/DocumentationSetupGuides"));
+const Analysis = lazy(() => import("./pages/Analysis"));
+const Control = lazy(() => import("./pages/Control"));
+const Hardware = lazy(() => import("./pages/Hardware"));
 
 import {
   Home as HomeIcon,
@@ -57,7 +60,7 @@ export const routes = [
     showInNav: false, // Don't show landing page in nav
     inMobileNav: false,
     inPrimaryNav: false,
-    description: "ProStat Landing Page",
+    description: "Joule Landing Page",
   },
   // ===== THE GOLDEN PATH: 5 MAIN TABS =====
   {
@@ -165,9 +168,9 @@ export const routes = [
     label: "Docs",
     icon: FileText,
     Component: Hardware,
-    showInNav: true,
-    inMobileNav: true,
-    inPrimaryNav: true,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
     description: "Documentation and knowledge base",
   },
   {
@@ -442,7 +445,7 @@ export const routes = [
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,
-    description: "ProStat Monitor & Bridge products - moved to /hardware",
+    description: "Joule Monitor & Bridge products - moved to /hardware",
   },
 ];
 

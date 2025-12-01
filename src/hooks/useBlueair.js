@@ -4,7 +4,7 @@ import {
   controlBlueairFan,
   controlBlueairLED,
   startDustKickerCycle,
-} from "../lib/prostatBridgeApi";
+} from "../lib/jouleBridgeApi";
 
 /**
  * React hook for Blueair air purifier control

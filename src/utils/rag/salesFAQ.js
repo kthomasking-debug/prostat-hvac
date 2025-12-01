@@ -23,14 +23,14 @@ export const SALES_FAQ = [
     ],
     question: "Does this work with Nest thermostats?",
     answer:
-      "Not yet. ProStat is engineered exclusively for Ecobee. Why? Because Ecobee allows Local Control via HomeKit. This lets ProStat react in milliseconds to protect your compressor, without relying on the cloud. Nest and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic. Have a Nest? Join the Waitlist. We are building a cloud-bridge version for 2026.",
+      "Not yet. Joule is engineered exclusively for Ecobee. Why? Because Ecobee allows Local Control via HomeKit. This lets Joule react in milliseconds to protect your compressor, without relying on the cloud. Nest and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic. Have a Nest? Join the Waitlist. We are building a cloud-bridge version for 2026.",
     category: "compatibility",
   },
   {
     keywords: ["honeywell t6", "honeywell", "t6"],
     question: "Does this work with Honeywell T6?",
     answer:
-      "Not yet. ProStat is engineered exclusively for Ecobee. Why? Because Ecobee allows Local Control via HomeKit. This lets ProStat react in milliseconds to protect your compressor, without relying on the cloud. Honeywell and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic. Have a Honeywell? Join the Waitlist. We are building a cloud-bridge version for 2026.",
+      "Not yet. Joule is engineered exclusively for Ecobee. Why? Because Ecobee allows Local Control via HomeKit. This lets Joule react in milliseconds to protect your compressor, without relying on the cloud. Honeywell and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic. Have a Honeywell? Join the Waitlist. We are building a cloud-bridge version for 2026.",
     category: "compatibility",
   },
   {
@@ -42,21 +42,21 @@ export const SALES_FAQ = [
     ],
     question: "Does this work with Ecobee?",
     answer:
-      "Yes! ProStat fully supports Ecobee thermostats. The Monitor tier automatically collects daily data from your Ecobee, and the Bridge tier provides full local control via HomeKit.",
+      "Yes! Joule fully supports Ecobee thermostats. The Monitor tier automatically collects daily data from your Ecobee, and the Bridge tier provides full local control via HomeKit.",
     category: "compatibility",
   },
   {
     keywords: ["venstar", "works with venstar", "venstar compatible"],
     question: "Does this work with Venstar thermostats?",
     answer:
-      "ProStat is purpose-built for Ecobee. We focus on Ecobee because it provides superior data fidelity. Have a Venstar? Join the waitlist - we'll add support if there's enough demand (500+ signups).",
+      "Joule is purpose-built for Ecobee. We focus on Ecobee because it provides superior data fidelity. Have a Venstar? Join the waitlist - we'll add support if there's enough demand (500+ signups).",
     category: "compatibility",
   },
   {
     keywords: ["homekit", "siri", "apple homekit", "works with homekit"],
     question: "Does this work with HomeKit and Siri?",
     answer:
-      "Yes! The ProStat Bridge tier includes full HomeKit support. You can control your thermostat with Siri voice commands and integrate with Apple Home automations. This works completely offline - no cloud required.",
+      "Yes! The Joule Bridge tier includes full HomeKit support. You can control your thermostat with Siri voice commands and integrate with Apple Home automations. This works completely offline - no cloud required.",
     category: "compatibility",
   },
   {
@@ -69,14 +69,14 @@ export const SALES_FAQ = [
     ],
     question: "Does this work without internet?",
     answer:
-      "The ProStat Bridge tier works completely offline - no internet or WiFi required. All control and scheduling happens locally. The Monitor tier requires internet for cloud data collection, but the Bridge tier is fully autonomous.",
+      "The Joule Bridge tier works completely offline - no internet or WiFi required. All control and scheduling happens locally. The Monitor tier requires internet for cloud data collection, but the Bridge tier is fully autonomous.",
     category: "compatibility",
   },
   {
     keywords: ["home assistant", "ha", "works with home assistant"],
     question: "Does this work with Home Assistant?",
     answer:
-      "The ProStat Bridge exposes a local HomeKit interface, which can be integrated with Home Assistant using the HomeKit Controller integration. This allows full control from Home Assistant.",
+      "The Joule Bridge exposes a local HomeKit interface, which can be integrated with Home Assistant using the HomeKit Controller integration. This allows full control from Home Assistant.",
     category: "compatibility",
   },
 
@@ -91,7 +91,7 @@ export const SALES_FAQ = [
     ],
     question: "Is there a monthly subscription fee?",
     answer:
-      "No. The ProStat Bridge ($129) is a one-time purchase. It processes data locally on your device, so there are no cloud server costs for us to pass on to you.",
+      "No. The Joule Bridge ($129) is a one-time purchase. It processes data locally on your device, so there are no cloud server costs for us to pass on to you.",
     category: "pricing",
   },
   {
@@ -141,7 +141,7 @@ export const SALES_FAQ = [
     ],
     question: "What's included in the box?",
     answer:
-      "The ProStat Bridge includes: The Raspberry Pi Zero 2 W unit in a premium aluminum case, a pre-flashed 32GB SD card with ProStat OS, and a USB power cable. You just need a standard USB power brick.",
+      "The Joule Bridge includes: The Raspberry Pi Zero 2 W unit in a premium aluminum case, a pre-flashed 32GB SD card with Joule OS, and a USB power cable. You just need a standard USB power brick.",
     category: "hardware",
   },
   {
@@ -161,14 +161,14 @@ export const SALES_FAQ = [
     ],
     question: "How difficult is installation?",
     answer:
-      "The ProStat Bridge is designed for DIY installation. It connects to your existing thermostat wiring (standard 24VAC). Step-by-step instructions are included, and we provide support through eBay messaging. Basic electrical knowledge is helpful but not required.",
+      "The Joule Bridge is designed for DIY installation. It connects to your existing thermostat wiring (standard 24VAC). Step-by-step instructions are included, and we provide support through eBay messaging. Basic electrical knowledge is helpful but not required.",
     category: "hardware",
   },
   {
     keywords: ["raspberry pi", "rpi", "what hardware", "controller"],
     question: "What hardware does the Bridge use?",
     answer:
-      "The ProStat Bridge uses a Raspberry Pi-based controller that's pre-configured and ready to use. You don't need to install any software or configure the Pi - it comes fully set up and tested.",
+      "The Joule Bridge uses a Raspberry Pi-based controller that's pre-configured and ready to use. You don't need to install any software or configure the Pi - it comes fully set up and tested.",
     category: "hardware",
   },
 
@@ -211,9 +211,9 @@ export const SALES_FAQ = [
   // Features Questions
   {
     keywords: ["features", "what can it do", "capabilities", "what does it do"],
-    question: "What features does ProStat offer?",
+    question: "What features does Joule offer?",
     answer:
-      "ProStat provides: Automatic heat loss analysis, efficiency tracking, cost forecasting, thermostat control (Bridge tier), HomeKit integration, offline operation (Bridge tier), and CSV data analysis. Features vary by tier - see the product comparison on the upgrades page.",
+      "Joule provides: Automatic heat loss analysis, efficiency tracking, cost forecasting, thermostat control (Bridge tier), HomeKit integration, offline operation (Bridge tier), and CSV data analysis. Features vary by tier - see the product comparison on the upgrades page.",
     category: "features",
   },
   {
@@ -227,7 +227,7 @@ export const SALES_FAQ = [
     keywords: ["local control", "offline", "no cloud", "privacy"],
     question: "What does 'local control' mean?",
     answer:
-      "Local control means everything runs on your ProStat Bridge hardware in your home. No data goes to the cloud, no internet required for operation, and you have complete privacy and sovereignty over your system. Schedules and automations run even if your internet goes down.",
+      "Local control means everything runs on your Joule Bridge hardware in your home. No data goes to the cloud, no internet required for operation, and you have complete privacy and sovereignty over your system. Schedules and automations run even if your internet goes down.",
     category: "features",
   },
 ];

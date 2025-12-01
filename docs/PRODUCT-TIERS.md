@@ -1,8 +1,8 @@
-# ProStat Product Tiers
+# Joule Product Tiers
 
 ## Overview
 
-ProStat offers three product tiers to meet different needs and budgets, from basic analysis to complete home automation control.
+Joule offers three product tiers to meet different needs and budgets, from basic analysis to complete home automation control.
 
 ---
 
@@ -46,7 +46,7 @@ ProStat offers three product tiers to meet different needs and budgets, from bas
 
 ---
 
-## 💰 Paid: ProStat Monitor ($20/year)
+## 💰 Paid: Joule Monitor ($20/year)
 
 **Price:** $20/year subscription  
 **Target:** Homeowners who want automatic monitoring without hardware
@@ -88,14 +88,14 @@ Everything in **Free**, plus:
 
 ---
 
-## 🏆 Premium: ProStat Bridge ($129)
+## 🏆 Premium: Joule Bridge ($129)
 
 **Price:** $129 one-time purchase  
 **Target:** Homeowners who want complete control and sovereignty
 
 ### What You Get
 
-Everything in **ProStat Monitor**, plus:
+Everything in **Joule Monitor**, plus:
 
 - **Raspberry Pi Zero Hardware**
   - Pre-configured and ready to use
@@ -132,6 +132,8 @@ Everything in **ProStat Monitor**, plus:
 - USB power adapter
 - USB-C cable
 - Quick start guide
+
+**Note:** The Bridge is sold as hardware-only. We do not sell tablets or complete display kits. If you want a wall-mounted display, we recommend purchasing an Amazon Fire HD 8 tablet separately and using our 3D-printed mount design (available in our documentation). This keeps costs low and avoids shipping complications with batteries and glass screens.
 
 ### Limitations
 
@@ -238,6 +240,15 @@ No. You can purchase Bridge directly, which includes all Monitor features.
 
 ### What if I already have a Raspberry Pi?
 Contact support for a software-only Bridge license at a reduced price.
+
+### Can I get a tablet/display with the Bridge?
+We sell the Bridge hardware only ($129). For wall-mounted displays, we recommend purchasing an Amazon Fire HD 8 tablet separately (~$50-80) and using our 3D-printed mount design. This approach:
+- Keeps the Bridge price low ($129 vs $249+ for a complete kit)
+- Avoids shipping complications (no batteries, no glass screens)
+- Lets you choose your preferred tablet
+- Provides better value (Amazon sells tablets at a loss; we can't compete)
+
+See our documentation for tablet setup guides and mount designs.
 
 ### Can I use Bridge without Ecobee?
 Yes! Bridge can work with other thermostats via HomeKit or direct control protocols.

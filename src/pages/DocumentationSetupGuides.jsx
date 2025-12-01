@@ -118,14 +118,14 @@ export default function DocumentationSetupGuides() {
                 <div className="flex items-center gap-2">
                   <Crown className="w-5 h-5 text-purple-500" />
                   <h3 className="heading-tertiary group-hover:opacity-80">
-                    ProStat Product Tiers: Free, Monitor ($20), Bridge ($129)
+                    Joule Product Tiers: Free, Monitor ($20), Bridge ($129)
                   </h3>
                 </div>
                 <ExternalLink className="w-5 h-5 text-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
               <p className="text-sm text-muted mb-2">
-                Complete product comparison: Free CSV Analyzer, ProStat Monitor with automatic daily analysis ($20), 
-                and ProStat Bridge with Raspberry Pi hardware for complete local control ($129).
+                Complete product comparison: Free CSV Analyzer, Joule Monitor with automatic daily analysis ($20), 
+                and Joule Bridge with Raspberry Pi hardware for complete local control ($129).
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 <span className="text-xs px-2 py-1 glass-card border-purple-500/30 text-high-contrast rounded">Free Tier</span>
@@ -135,14 +135,14 @@ export default function DocumentationSetupGuides() {
               </div>
             </Link>
             
-            {/* ProStat Bridge Setup */}
+            {/* Joule Bridge Setup */}
             <Link
-              to="/docs/PROSTAT-BRIDGE-SETUP.md"
+              to="/docs/JOULE-BRIDGE-SETUP.md"
               className="p-4 glass-card border-blue-500/30 hover:shadow-md transition-all group"
             >
               <div className="flex items-start justify-between mb-2">
                 <h3 className="heading-tertiary group-hover:opacity-80">
-                  ProStat Bridge Setup
+                  Joule Bridge Setup
                 </h3>
                 <ExternalLink className="w-4 h-4 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>

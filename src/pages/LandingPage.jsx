@@ -116,7 +116,7 @@ const LandingPage = () => {
             The Operating System<br />Your HVAC Deserves
           </h1>
           <p className="text-xl md:text-2xl mb-4 text-blue-100">
-            Your Ecobee is dumb. ProStat is the brain.
+            Your Ecobee is dumb. Joule is the brain.
           </p>
           <p className="text-lg mb-8 text-blue-200 max-w-2xl mx-auto">
             Stop short cycling. Predict bills. Protect your lungs. Take control of your home's climate with intelligence, not guesswork.
@@ -155,7 +155,7 @@ const LandingPage = () => {
       <section className="py-16 px-4">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12 text-gray-900 dark:text-white">
-            Why ProStat?
+            Why Joule?
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Feature 1 */}
@@ -206,7 +206,7 @@ const LandingPage = () => {
           <div className="text-center mb-12">
             <Crown className="w-12 h-12 text-purple-600 dark:text-purple-400 mx-auto mb-4" />
             <h2 className="text-3xl font-bold mb-4 text-gray-900 dark:text-white">
-              ProStat Product Tiers
+              Joule Product Tiers
             </h2>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
               Choose the plan that fits your needs
@@ -265,7 +265,7 @@ const LandingPage = () => {
                   <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">/year</span>
                 </div>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">ProStat Monitor</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">Joule Monitor</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Annual subscription • Automatic cloud monitoring</p>
               <ul className="space-y-2 text-sm flex-grow mb-4">
                 <li className="flex items-start gap-2">
@@ -304,7 +304,7 @@ const LandingPage = () => {
                 <h4 className="font-bold text-lg text-gray-900 dark:text-white">Bridge</h4>
                 <span className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 leading-tight whitespace-nowrap">$129</span>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">ProStat Bridge</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">Joule Bridge</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">One-time purchase • Complete control</p>
               <ul className="space-y-2 text-sm flex-grow mb-4">
                 <li className="flex items-start gap-2">
@@ -313,7 +313,7 @@ const LandingPage = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                  <span className="text-gray-700 dark:text-gray-300">ProStat Bridge hardware included (pre-configured)</span>
+                  <span className="text-gray-700 dark:text-gray-300">Joule Bridge hardware included (pre-configured)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
@@ -360,7 +360,7 @@ const LandingPage = () => {
               {faqOpen[0] && (
                 <div className="px-4 pb-4 text-gray-600 dark:text-gray-400">
                   <p>
-                    Absolutely safe. ProStat is read-only by default. It monitors your system and provides recommendations, but never makes changes without your explicit approval. The Bridge tier adds control capabilities, but all actions are logged and reversible.
+                    Absolutely safe. Joule is read-only by default. It monitors your system and provides recommendations, but never makes changes without your explicit approval. The Bridge tier adds control capabilities, but all actions are logged and reversible.
                   </p>
                 </div>
               )}
@@ -379,10 +379,10 @@ const LandingPage = () => {
               {faqOpen[1] && (
                 <div className="px-4 pb-4 text-gray-600 dark:text-gray-400">
                   <p className="mb-2">
-                    <strong>Not yet. ProStat is engineered exclusively for Ecobee.</strong>
+                    <strong>Not yet. Joule is engineered exclusively for Ecobee.</strong>
                   </p>
                   <p className="mb-2">
-                    Why? Because Ecobee allows Local Control via HomeKit. This lets ProStat react in milliseconds to protect your compressor, without relying on the cloud. Nest and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic.
+                    Why? Because Ecobee allows Local Control via HomeKit. This lets Joule react in milliseconds to protect your compressor, without relying on the cloud. Nest and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic.
                   </p>
                   <p>
                     <strong>Have a Nest?</strong> <a href="#waitlist" className="text-blue-600 dark:text-blue-400 underline">Join the Waitlist</a>. We are building a cloud-bridge version for 2026.
@@ -410,7 +410,7 @@ const LandingPage = () => {
                     Any thermostat that exports data (CSV) works with our Free Analyzer. Upload your data to get your Heat Loss Score, Balance Point, and Efficiency Grade instantly.
                   </p>
                   <p>
-                    For Automatic Monitoring & Control, you need an Ecobee. The ProStat Bridge requires Ecobee's local API to run its protection logic.
+                    For Automatic Monitoring & Control, you need an Ecobee. The Joule Bridge requires Ecobee's local API to run its protection logic.
                   </p>
                 </div>
               )}
@@ -432,7 +432,7 @@ const LandingPage = () => {
                     Physics-Grade Accuracy.
                   </p>
                   <p className="mb-2">
-                    We don't guess based on 'similar homes.' We calculate your home's unique Thermal Decay Rate (how fast it loses heat per hour). By combining this physics model with your local utility rates and hyperlocal weather forecasts, ProStat predicts your bill within 5-8% variance.
+                    We don't guess based on 'similar homes.' We calculate your home's unique Thermal Decay Rate (how fast it loses heat per hour). By combining this physics model with your local utility rates and hyperlocal weather forecasts, Joule predicts your bill within 5-8% variance.
                   </p>
                   <p>
                     Bonus: We flag 'Weather Anomalies' (like Polar Vortex events) before they hit your wallet.
@@ -449,7 +449,7 @@ const LandingPage = () => {
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
             <div>
-              <h3 className="text-white font-bold mb-4">ProStat</h3>
+              <h3 className="text-white font-bold mb-4">Joule</h3>
               <p className="text-sm">
                 The operating system your HVAC deserves. Intelligent climate control for your home.
               </p>
@@ -501,7 +501,7 @@ const LandingPage = () => {
             </div>
           </div>
           <div className="border-t border-gray-800 pt-8 text-center text-sm">
-            <p>&copy; {new Date().getFullYear()} ProStat. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} Joule. All rights reserved.</p>
           </div>
         </div>
       </footer>

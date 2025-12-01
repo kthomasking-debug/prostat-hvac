@@ -264,17 +264,25 @@ export function useSpeechSynthesis(options = {}) {
         .replace(/\bHERS\b/gi, "H E R S") // Home Energy Rating System
         .replace(/\bHVAC\b/gi, "H V A C") // Heating, Ventilation, Air Conditioning
         .replace(/\$(\d+)/g, "$1 dollars") // Say "dollars" instead of just the number
-        .replace(/°F/g, " degrees Fahrenheit")
         // Replace negative numbers first (before range replacements)
-        .replace(/-(\d+)/g, "negative $1") // Negative numbers: "-5" → "negative 5"
-        // Replace dashes with "to" for ranges (after handling negative numbers)
-        // Only match actual ranges, not compound words like "larger-scale" or "multi-zone"
-        .replace(/(\d+)\s*-\s*(\d+)/g, "$1 to $2") // Number ranges: "32-40" → "32 to 40"
-        // Word ranges: only match if both words are standalone (not compound adjectives)
-        // Match patterns like "heating-cooling" but not "larger-scale" or "multi-zone"
-        .replace(/\b(heating|cooling|winter|summer|day|night|morning|evening|high|low|warm|cold|hot|cool)\s*-\s*(heating|cooling|winter|summer|day|night|morning|evening|high|low|warm|cold|hot|cool)\b/gi, "$1 to $2") // Temperature/mode ranges
-        .replace(/(\d+)\s*-\s*(\w+)/g, "$1 to $2") // Mixed: "70-heating" → "70 to heating"
-        .replace(/(\w+)\s*-\s*(\d+)/g, "$1 to $2") // Mixed: "heating-70" → "heating to 70"
+        // Only match negative numbers at word boundaries or start of string, not in compound words
+        .replace(/(^|\s)-(\d+)/g, "$1negative $2") // Negative numbers: "-5" → "negative 5" (only at start or after whitespace)
+        // Replace dashes with "to" for ranges (before unit replacements to preserve unit symbols)
+        // Only match actual numeric ranges, not compound words like "larger-scale" or "multi-zone"
+        // Pattern 1: Number ranges with units attached (e.g., "32-40°F", "5-10°C", "85-95%")
+        .replace(/(\d+)\s*-\s*(\d+)(°[CF]|°|%)/gi, "$1 to $2$3")
+        // Pattern 2: Number ranges with units after space (e.g., "2-4 kW", "5-15 kW", "32-40 degrees")
+        .replace(/(\d+)\s*-\s*(\d+)\s+(kW|BTU|kBTU|degrees?|percent|°[CF])/gi, "$1 to $2 $3")
+        // Pattern 3: Number ranges with units before dash (e.g., "$10-20", "2-3x")
+        .replace(/(\$|x|×)(\d+)\s*-\s*(\d+)/gi, "$1$2 to $3")
+        // Pattern 4: Simple number ranges (e.g., "32-40", "5-10", "85-95")
+        // Match number-number only when followed by end of string, punctuation, or whitespace (not word chars)
+        // This ensures we don't match compound words like "heat-pump" or "multi-zone"
+        .replace(/(\d+)\s*-\s*(\d+)(?=\s|$|[.,;:!?])/g, "$1 to $2")
+        // Now replace unit symbols (after range processing)
+        .replace(/°F/g, " degrees Fahrenheit")
+        // Don't replace dashes in compound words (e.g., "larger-scale", "multi-zone", "high-efficiency", "heat-pump")
+        // These are handled by leaving them as-is (the dash will be read naturally by TTS)
         .replace(/(\d+)\s*HSPF/gi, "$1 H S P F") // Handle HSPF with numbers (e.g., "9 HSPF")
         .replace(/(\d+)\s*SEER/gi, "$1 S E E R") // Handle SEER with numbers
         .replace(/(\d+)\s*AFUE/gi, "$1 A F U E") // Handle AFUE with numbers

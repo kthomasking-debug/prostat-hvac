@@ -94,6 +94,7 @@ export const DEFAULT_THERMOSTAT_SETTINGS = {
   schedule: {
     enabled: true,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    scheduleProfile: "commuter", // Default profile: "commuter" | "workFromHome" | "arbitrage"
     // Day of week (0=Sunday) → array of {time: "HH:MM", comfortSetting: "home"|"away"|"sleep"}
     weekly: {
       0: [

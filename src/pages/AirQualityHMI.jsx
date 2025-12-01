@@ -16,10 +16,10 @@ import {
 } from 'lucide-react';
 import { useProstatRelay } from '../hooks/useProstatRelay';
 import { useBlueair } from '../hooks/useBlueair';
-import { useProstatBridge } from '../hooks/useProstatBridge';
+import { useJouleBridge } from '../hooks/useJouleBridge';
 import { useEcobee } from '../hooks/useEcobee';
 import { getEcobeeCredentials } from '../lib/ecobeeApi';
-import { checkBridgeHealth } from '../lib/prostatBridgeApi';
+import { checkBridgeHealth } from '../lib/jouleBridgeApi';
 import { getPollenData } from '../lib/pollenApi';
 
 /**
@@ -31,7 +31,7 @@ export default function AirQualityHMI() {
   
   // Integration hooks
   const [bridgeAvailable, setBridgeAvailable] = useState(false);
-  const prostatBridge = useProstatBridge(null, 5000);
+  const jouleBridge = useJouleBridge(null, 5000);
   const prostatRelay = useProstatRelay(2, 5000);
   const blueair = useBlueair(0, 10000);
   const ecobeeCredentials = getEcobeeCredentials();
@@ -88,8 +88,8 @@ export default function AirQualityHMI() {
   }, [fetchPollenData]);
   
   // Get humidity from active integration
-  const indoorHumidity = bridgeAvailable && prostatBridge.connected
-    ? prostatBridge.humidity
+  const indoorHumidity = bridgeAvailable && jouleBridge.connected
+    ? jouleBridge.humidity
     : (useEcobeeIntegration && ecobee.humidity !== null
       ? ecobee.humidity
       : null);
@@ -111,9 +111,9 @@ export default function AirQualityHMI() {
           }
         }
       }
-    } else if (bridgeAvailable && prostatBridge.connected && prostatBridge.thermostatData) {
-      // Get motion from ProStat Bridge (if available)
-      const motion = prostatBridge.thermostatData.motionDetected || false;
+    } else if (bridgeAvailable && jouleBridge.connected && jouleBridge.thermostatData) {
+      // Get motion from Joule Bridge (if available)
+      const motion = jouleBridge.thermostatData.motionDetected || false;
       setMotionDetected(motion);
     } else {
       // Fallback: simulate based on time of day
@@ -124,7 +124,7 @@ export default function AirQualityHMI() {
         setLastMotionTime(new Date());
       }
     }
-  }, [useEcobeeIntegration, ecobee.thermostatData, bridgeAvailable, prostatBridge.connected, prostatBridge.thermostatData]);
+  }, [useEcobeeIntegration, ecobee.thermostatData, bridgeAvailable, jouleBridge.connected, jouleBridge.thermostatData]);
   
   // Calculate overall air quality score
   const airQualityScore = useCallback(() => {
@@ -214,7 +214,7 @@ export default function AirQualityHMI() {
                 Status
               </div>
               <div className="flex items-center gap-2">
-                {bridgeAvailable && prostatBridge.connected ? (
+                {bridgeAvailable && jouleBridge.connected ? (
                   <CheckCircle2 className="w-6 h-6 text-green-600" />
                 ) : (
                   <AlertCircle className="w-6 h-6 text-yellow-600" />

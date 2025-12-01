@@ -7,13 +7,13 @@ import {
   getPrimaryDeviceId,
   setPrimaryDeviceId,
   checkBridgeHealth,
-} from '../lib/prostatBridgeApi';
+} from '../lib/jouleBridgeApi';
 import { CheckCircle2, XCircle, Loader2, AlertCircle, RefreshCw, Trash2 } from 'lucide-react';
 
-export default function ProstatBridgeSettings() {
+export default function JouleBridgeSettings() {
   const [bridgeUrl, setBridgeUrl] = useState(() => {
     try {
-      return localStorage.getItem('prostatBridgeUrl') || 'http://localhost:8080';
+      return localStorage.getItem('jouleBridgeUrl') || 'http://localhost:8080';
     } catch {
       return 'http://localhost:8080';
     }
@@ -52,7 +52,7 @@ export default function ProstatBridgeSettings() {
 
   const handleSaveUrl = () => {
     try {
-      localStorage.setItem('prostatBridgeUrl', bridgeUrl);
+      localStorage.setItem('jouleBridgeUrl', bridgeUrl);
       checkHealth();
     } catch (error) {
       alert('Failed to save URL');
@@ -117,21 +117,21 @@ export default function ProstatBridgeSettings() {
   return (
     <div className="space-y-4">
       <div className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-        ProStat Bridge enables <strong>local-only</strong> thermostat control using HomeKit HAP protocol.
+        Joule Bridge enables <strong>local-only</strong> thermostat control using HomeKit HAP protocol.
         No cloud, no APIs, just pure local control with millisecond latency.
       </div>
 
       {/* Bridge URL Configuration */}
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          ProStat Bridge URL
+          Joule Bridge URL
         </label>
         <div className="flex gap-2">
           <input
             type="text"
             value={bridgeUrl}
             onChange={(e) => setBridgeUrl(e.target.value)}
-            placeholder="http://prostat-bridge.local:8080"
+            placeholder="http://joule-bridge.local:8080"
             className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
           <button
@@ -142,7 +142,7 @@ export default function ProstatBridgeSettings() {
           </button>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Enter your ProStat Bridge's IP address or hostname (e.g., http://192.168.1.100:8080)
+          Enter your Joule Bridge's IP address or hostname (e.g., http://192.168.1.100:8080)
         </p>
       </div>
 
@@ -171,7 +171,7 @@ export default function ProstatBridgeSettings() {
         </div>
         {!bridgeAvailable && !checkingHealth && (
           <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-            Make sure your ProStat Bridge is running and the service is started.
+            Make sure your Joule Bridge is running and the service is started.
           </p>
         )}
       </div>

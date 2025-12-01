@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { Info, Home, Snowflake, Clock, Mountain, BarChart3, Flame, ThermometerSun } from 'lucide-react';
 import { DashboardLink } from '../components/DashboardLink';
+import { getDefrostPenalty } from '../lib/heatUtils';
 
 const CalculationMethodology = () => {
   const [showMath, setShowMath] = useState(false);
@@ -56,10 +57,7 @@ const CalculationMethodology = () => {
     if (manualTemp < 17) capacityFactor = 0.70 - (17 - manualTemp) * 0.0074;
     capacityFactor = Math.max(0.3, capacityFactor);
     const powerFactor = 1 / Math.max(0.7, capacityFactor);
-    let defrostPenalty = 1.0;
-    if (manualTemp > 20 && manualTemp < 45) {
-      defrostPenalty = 1 + (0.15 * (manualHumidity / 100));
-    }
+    const defrostPenalty = getDefrostPenalty(manualTemp, manualHumidity);
     const electricalKw = (compressorPower * powerFactor) * defrostPenalty;
     const hpOutputBtu = (tons * 3.517 * capacityFactor) * 3412.14;
     const runtime = (buildingHeatLoss / hpOutputBtu) * 100;

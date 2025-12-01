@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { computeHourlyPerformance, computeHourlyCoolingPerformance, calculateHeatLoss, getCapacityFactor, KW_PER_TON_OUTPUT, BTU_PER_KWH } from '../lib/heatUtils';
+import { computeHourlyPerformance, computeHourlyCoolingPerformance, calculateHeatLoss, getCapacityFactor, getDefrostPenalty, KW_PER_TON_OUTPUT, BTU_PER_KWH } from '../lib/heatUtils';
 import { computeHourlyCost } from '../lib/costUtils';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
 import BeforeAfterSlider from '../components/BeforeAfterSlider';
 
 const defaultSettings = {
@@ -96,6 +96,7 @@ export default function ThermostatStrategyAnalyzer() {
   const [selectedHour, setSelectedHour] = useState(6);
 
   const [showHeatLossTooltip, setShowHeatLossTooltip] = useState(false);
+  const [showCalculations, setShowCalculations] = useState(false);
   const profile = make24HourProfile(lowTemp, highTemp);
   // Calculate per-hour values for the selected hour
   const hourData = profile[selectedHour] || profile[0];
@@ -116,7 +117,7 @@ export default function ThermostatStrategyAnalyzer() {
   let heatpumpOutputBtu = nominalCapacityBtu * (capacityFactor || 0);
   let powerFactor = 1 / Math.max(0.7, capacityFactor || 0.7);
   let baseElectricalKw = settings.compressorPower * powerFactor;
-  let defrostPenalty = (outdoorTemp > 20 && outdoorTemp < 45) ? 1 + 0.15 * (humidity / 100) : 1;
+  let defrostPenalty = getDefrostPenalty(outdoorTemp, humidity);
   let electricalKw = 0;
   let runtimePercent = 0;
   let deficitBtu = 0;
@@ -391,12 +392,27 @@ export default function ThermostatStrategyAnalyzer() {
               />
             </div>
 
-            {/* Collapsible Math Breakdown */}
-            <details className="mt-8 bg-gray-50 dark:bg-gray-800 rounded-lg border dark:border-gray-700">
-              <summary className="p-4 cursor-pointer font-semibold text-lg select-none">
-                Geek Out: See the Full Math Breakdown
-              </summary>
-              <div className="p-6 border-t dark:border-gray-600">
+            {/* Live Math Calculations Pulldown */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-8">
+              <button
+                onClick={() => setShowCalculations(!showCalculations)}
+                className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                    <Calculator size={24} className="text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
+                </div>
+                {showCalculations ? (
+                  <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                )}
+              </button>
+
+              {showCalculations && (
+                <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
                 <div className="mb-4">
                   <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">Select Hour of Day</label>
                   <input type="range" min={0} max={23} value={selectedHour} onChange={e => setSelectedHour(Number(e.target.value))} className="w-full" />
@@ -457,11 +473,12 @@ export default function ThermostatStrategyAnalyzer() {
                     </span>
                   </div>
                 </div>
-                <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                  All variables update as you change thermostat settings above or select a different hour. See the code for more details on capacity factor and runtime logic.
+                  <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                    All variables update as you change thermostat settings above or select a different hour. See the code for more details on capacity factor and runtime logic.
+                  </div>
                 </div>
-              </div>
-            </details>
+              )}
+            </div>
 
             {/* Heat Loss Comparison Section */}
             <div className="mt-8">

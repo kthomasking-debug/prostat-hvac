@@ -5,16 +5,16 @@ import {
   setMode as bridgeSetMode,
   getPrimaryDeviceId,
   checkBridgeHealth,
-} from "../lib/prostatBridgeApi";
+} from "../lib/jouleBridgeApi";
 
 /**
- * React hook for ProStat Bridge (HomeKit HAP) integration
+ * React hook for Joule Bridge (HomeKit HAP) integration
  *
  * @param {string} deviceId - Optional specific device ID, otherwise uses primary device
  * @param {number} pollInterval - Polling interval in milliseconds (default: 5000 = 5 seconds)
  * @returns {Object} Bridge state and control functions
  */
-export function useProstatBridge(deviceId = null, pollInterval = 5000) {
+export function useJouleBridge(deviceId = null, pollInterval = 5000) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connected, setConnected] = useState(false);
@@ -77,7 +77,7 @@ export function useProstatBridge(deviceId = null, pollInterval = 5000) {
       setLoading(false);
       return null;
     } catch (err) {
-      console.error("Error fetching ProStat Bridge data:", err);
+      console.error("Error fetching Joule Bridge data:", err);
       setError(err.message);
       setConnected(false);
       setLoading(false);
@@ -90,7 +90,7 @@ export function useProstatBridge(deviceId = null, pollInterval = 5000) {
     // Check bridge health first
     checkHealth().then((available) => {
       if (!available) {
-        setError("ProStat Bridge not available. Is the Pi running?");
+        setError("Joule Bridge not available. Is the Bridge running?");
         setLoading(false);
         return;
       }
@@ -201,3 +201,4 @@ export function useProstatBridge(deviceId = null, pollInterval = 5000) {
     checkHealth,
   };
 }
+

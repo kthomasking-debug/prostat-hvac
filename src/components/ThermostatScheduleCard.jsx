@@ -139,6 +139,8 @@ function TimelinePreview({ daytimeTime, nighttimeTime }) {
  * @param {Function} onNighttimeTempChange - Callback when nighttime temp changes
  * @param {Function} onIndoorTempChange - Callback when daytime temp changes
  * @param {Function} setUserSetting - User settings setter from outlet context
+ * @param {string} daytimeSettingKey - Optional: Setting key for daytime temp (default: "winterThermostat")
+ * @param {boolean} skipComfortSettingsUpdate - Optional: Skip updating comfort settings (for Annual Budget Planner)
  */
 export default function ThermostatScheduleCard({
   indoorTemp,
@@ -150,6 +152,8 @@ export default function ThermostatScheduleCard({
   onNighttimeTempChange,
   onIndoorTempChange,
   setUserSetting,
+  daytimeSettingKey = "winterThermostat",
+  skipComfortSettingsUpdate = false,
 }) {
   // Track which period is currently active (updates every minute)
   const [activePeriod, setActivePeriod] = useState(() =>
@@ -170,19 +174,21 @@ export default function ThermostatScheduleCard({
   // Handle daytime temperature change
   const handleDaytimeTempChange = useCallback(
     (temp) => {
-      setSetting("winterThermostat", temp, {
-        source: "ThermostatScheduleCard",
-        comment: "Set daytime temperature via clock control",
-      });
-      if (setUserSetting) {
-        setUserSetting("winterThermostat", temp, {
+      if (!skipComfortSettingsUpdate) {
+        setSetting(daytimeSettingKey, temp, {
           source: "ThermostatScheduleCard",
           comment: "Set daytime temperature via clock control",
         });
+        if (setUserSetting) {
+          setUserSetting(daytimeSettingKey, temp, {
+            source: "ThermostatScheduleCard",
+            comment: "Set daytime temperature via clock control",
+          });
+        }
       }
       onIndoorTempChange?.(temp);
     },
-    [setUserSetting, onIndoorTempChange]
+    [setUserSetting, onIndoorTempChange, daytimeSettingKey, skipComfortSettingsUpdate]
   );
 
   // Handle daytime time change
@@ -220,31 +226,33 @@ export default function ThermostatScheduleCard({
   // Handle nighttime temperature change
   const handleNighttimeTempChange = useCallback((temp) => {
     onNighttimeTempChange?.(temp);
-    try {
-      const thermostatSettings = loadThermostatSettings();
-      if (!thermostatSettings.comfortSettings) {
-        thermostatSettings.comfortSettings = {};
+    if (!skipComfortSettingsUpdate) {
+      try {
+        const thermostatSettings = loadThermostatSettings();
+        if (!thermostatSettings.comfortSettings) {
+          thermostatSettings.comfortSettings = {};
+        }
+        if (!thermostatSettings.comfortSettings.sleep) {
+          thermostatSettings.comfortSettings.sleep = {
+            heatSetPoint: temp,
+            coolSetPoint: 72,
+            fanMode: "auto",
+            sensors: ["main"],
+          };
+        } else {
+          thermostatSettings.comfortSettings.sleep.heatSetPoint = temp;
+        }
+        saveThermostatSettings(thermostatSettings);
+        window.dispatchEvent(
+          new CustomEvent("thermostatSettingsUpdated", {
+            detail: { comfortSettings: thermostatSettings.comfortSettings },
+          })
+        );
+      } catch (error) {
+        console.error("Failed to update nighttime temperature:", error);
       }
-      if (!thermostatSettings.comfortSettings.sleep) {
-        thermostatSettings.comfortSettings.sleep = {
-          heatSetPoint: temp,
-          coolSetPoint: 72,
-          fanMode: "auto",
-          sensors: ["main"],
-        };
-      } else {
-        thermostatSettings.comfortSettings.sleep.heatSetPoint = temp;
-      }
-      saveThermostatSettings(thermostatSettings);
-      window.dispatchEvent(
-        new CustomEvent("thermostatSettingsUpdated", {
-          detail: { comfortSettings: thermostatSettings.comfortSettings },
-        })
-      );
-    } catch (error) {
-      console.error("Failed to update nighttime temperature:", error);
     }
-  }, [onNighttimeTempChange]);
+  }, [onNighttimeTempChange, skipComfortSettingsUpdate]);
 
   // Handle nighttime time change
   const handleNighttimeTimeChange = useCallback((time) => {

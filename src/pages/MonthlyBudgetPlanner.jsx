@@ -7,6 +7,10 @@ import {
   DollarSign,
   AlertTriangle,
   Cloud,
+  ChevronDown,
+  ChevronUp,
+  Calculator,
+  CheckCircle2,
 } from "lucide-react";
 import {
   inputClasses,
@@ -23,6 +27,7 @@ import {
   estimateMonthlyCoolingCostFromCDD,
   estimateMonthlyHeatingCostFromHDD,
 } from "../lib/budgetUtils";
+import { getAnnualHDD, getAnnualCDD } from "../lib/hddData";
 import * as heatUtils from "../lib/heatUtils";
 import {
   fetchLiveElectricityRate,
@@ -192,6 +197,52 @@ const MonthlyBudgetPlanner = () => {
     }
   });
 
+  // Annual Budget Planner: Separate state for winter and summer thermostat settings
+  const [winterDayTime, setWinterDayTime] = useState(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const homeEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
+        (e) => e.comfortSetting === "home"
+      );
+      return roundTimeTo30Minutes(homeEntry?.time || "05:30");
+    } catch {
+      return roundTimeTo30Minutes("05:30");
+    }
+  });
+  const [winterNightTime, setWinterNightTime] = useState(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const sleepEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
+        (e) => e.comfortSetting === "sleep"
+      );
+      return roundTimeTo30Minutes(sleepEntry?.time || "22:00");
+    } catch {
+      return roundTimeTo30Minutes("22:00");
+    }
+  });
+  const [summerDayTime, setSummerDayTime] = useState(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const homeEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
+        (e) => e.comfortSetting === "home"
+      );
+      return roundTimeTo30Minutes(homeEntry?.time || "05:30");
+    } catch {
+      return roundTimeTo30Minutes("05:30");
+    }
+  });
+  const [summerNightTime, setSummerNightTime] = useState(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const sleepEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
+        (e) => e.comfortSetting === "sleep"
+      );
+      return roundTimeTo30Minutes(sleepEntry?.time || "22:00");
+    } catch {
+      return roundTimeTo30Minutes("22:00");
+    }
+  });
+
   const [indoorTemp, setIndoorTemp] = useState(() => {
     try {
       const thermostatSettings = loadThermostatSettings();
@@ -237,6 +288,71 @@ const MonthlyBudgetPlanner = () => {
     return () => window.removeEventListener("thermostatSettingsUpdated", handleSettingsUpdate);
   }, []);
 
+  // Pre-fill Annual Budget Planner temperatures from comfort settings (ASHRAE defaults)
+  useEffect(() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const comfortSettings = thermostatSettings?.comfortSettings;
+      
+      if (comfortSettings) {
+        // ASHRAE Standard 55 recommended temperatures (50% RH):
+        // Winter: 70°F day (middle of 68.5-74.5°F range), 68°F night
+        // Summer: 76°F day (middle of 73-79°F range), 78°F night
+        
+        // Winter heating: use home heatSetPoint for day, sleep heatSetPoint for night
+        const winterDay = comfortSettings.home?.heatSetPoint ?? 70; // ASHRAE Standard 55 default
+        const winterNight = comfortSettings.sleep?.heatSetPoint ?? 68; // ASHRAE Standard 55 default
+        
+        // Summer cooling: use home coolSetPoint for day, sleep coolSetPoint for night
+        const summerDay = comfortSettings.home?.coolSetPoint ?? 76; // ASHRAE Standard 55 default
+        const summerNight = comfortSettings.sleep?.coolSetPoint ?? 78; // ASHRAE Standard 55 default
+        
+        // Only set if not already set in userSettings
+        if (!userSettings?.winterThermostatDay && setUserSetting) {
+          setUserSetting("winterThermostatDay", winterDay);
+        }
+        if (!userSettings?.winterThermostatNight && setUserSetting) {
+          setUserSetting("winterThermostatNight", winterNight);
+        }
+        if (!userSettings?.summerThermostat && setUserSetting) {
+          setUserSetting("summerThermostat", summerDay);
+        }
+        if (!userSettings?.summerThermostatNight && setUserSetting) {
+          setUserSetting("summerThermostatNight", summerNight);
+        }
+      } else {
+        // No comfort settings found, use ASHRAE Standard 55 defaults
+        if (!userSettings?.winterThermostatDay && setUserSetting) {
+          setUserSetting("winterThermostatDay", 70); // ASHRAE Standard 55: 70°F (middle of 68.5-74.5°F range)
+        }
+        if (!userSettings?.winterThermostatNight && setUserSetting) {
+          setUserSetting("winterThermostatNight", 68); // ASHRAE Standard 55: 68°F for sleep/unoccupied
+        }
+        if (!userSettings?.summerThermostat && setUserSetting) {
+          setUserSetting("summerThermostat", 76); // ASHRAE Standard 55: 76°F (middle of 73-79°F range)
+        }
+        if (!userSettings?.summerThermostatNight && setUserSetting) {
+          setUserSetting("summerThermostatNight", 78); // ASHRAE Standard 55: 78°F for sleep/unoccupied
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to load comfort settings for Annual Budget Planner:", error);
+      // Fallback to ASHRAE Standard 55 defaults
+      if (!userSettings?.winterThermostatDay && setUserSetting) {
+        setUserSetting("winterThermostatDay", 70);
+      }
+      if (!userSettings?.winterThermostatNight && setUserSetting) {
+        setUserSetting("winterThermostatNight", 68);
+      }
+      if (!userSettings?.summerThermostat && setUserSetting) {
+        setUserSetting("summerThermostat", 76);
+      }
+      if (!userSettings?.summerThermostatNight && setUserSetting) {
+        setUserSetting("summerThermostatNight", 78);
+      }
+    }
+  }, [userSettings?.winterThermostatDay, userSettings?.winterThermostatNight, userSettings?.summerThermostat, userSettings?.summerThermostatNight, setUserSetting]);
+
   // Calculate weighted average indoor temp based on day/night schedule
   // Uses actual times from thermostat settings (not hardcoded)
   const effectiveIndoorTemp = useMemo(() => {
@@ -279,6 +395,7 @@ const MonthlyBudgetPlanner = () => {
   const [selectedMonth, setSelectedMonth] = useState(1);
   const [locationData, setLocationData] = useState(null);
   const [monthlyEstimate, setMonthlyEstimate] = useState(null);
+  const [showCalculations, setShowCalculations] = useState(false);
   const [forecastModel, setForecastModel] = useState("typical"); // "typical" | "current" | "polarVortex"
   
   // Daily forecast for breakdown
@@ -379,6 +496,48 @@ const MonthlyBudgetPlanner = () => {
     }
   }, []);
 
+  /**
+   * Get effective heat loss factor (BTU/hr/°F)
+   * Priority: 1) analyzerHeatLoss from ecobee CSV, 2) calculated from building specs
+   * 
+   * The analyzerHeatLoss comes from SystemPerformanceAnalyzer.jsx which analyzes
+   * actual runtime data from ecobee CSV files to calculate real-world building efficiency.
+   * This is more accurate than theoretical calculations based on square footage alone.
+   */
+  const getEffectiveHeatLossFactor = useMemo(() => {
+    // Check for analyzer heat loss from ecobee CSV analysis
+    const analyzerHeatLoss = userSettings?.analyzerHeatLoss;
+    if (analyzerHeatLoss && typeof analyzerHeatLoss === 'number' && analyzerHeatLoss > 0) {
+      return analyzerHeatLoss;
+    }
+    
+    // Fallback to calculated heat loss from building specs
+    const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
+    const estimatedDesignHeatLoss = squareFeet * 22.67 * insulationLevel * homeShape * ceilingMultiplier;
+    // Convert to BTU/hr/°F (divide by 70°F design temp difference)
+    return estimatedDesignHeatLoss / 70;
+  }, [userSettings?.analyzerHeatLoss, squareFeet, insulationLevel, homeShape, ceilingHeight]);
+
+  /**
+   * Get location-aware baseline temperature for heating calculations
+   * This is the outdoor temperature below which heating is needed (balance point).
+   * Colder climates use 30°F, moderate climates use 35°F.
+   * 
+   * @param {Object} locationData - Location data with latitude
+   * @returns {number} Baseline temperature in °F
+   */
+  const getLocationAwareBaselineTemp = useCallback((locationData) => {
+    if (!locationData?.latitude) return 35; // Default for unknown location
+    
+    const lat = Number(locationData.latitude);
+    // Colder climates (higher latitude or known cold regions): 30°F
+    // Moderate climates: 35°F
+    if (lat >= 40 || locationData.state?.match(/AK|MN|ND|SD|MT|WY|ME|VT|NH/i)) {
+      return 30;
+    }
+    return 35;
+  }, []);
+
   const heatingMonths = React.useMemo(
     () => [
       { value: 1, label: "January" },
@@ -399,16 +558,34 @@ const MonthlyBudgetPlanner = () => {
     ],
     []
   );
+  // Combine all months for the dropdown - users can select any month
+  const allMonths = React.useMemo(
+    () => [
+      ...heatingMonths,
+      { value: 3, label: "March" },
+      { value: 4, label: "April" },
+      ...coolingMonths,
+    ].sort((a, b) => a.value - b.value), // Sort by month number
+    [heatingMonths, coolingMonths]
+  );
   const activeMonths = React.useMemo(
-    () => (energyMode === "cooling" ? coolingMonths : heatingMonths),
-    [energyMode, heatingMonths, coolingMonths]
+    () => allMonths, // Show all months in dropdown
+    [allMonths]
   );
 
+  // Auto-determine energy mode based on selected month
   useEffect(() => {
-    if (!activeMonths.some((m) => m.value === selectedMonth)) {
-      setSelectedMonth(energyMode === "cooling" ? 7 : 1);
+    const isCoolingMonth = coolingMonths.some((m) => m.value === selectedMonth);
+    const isHeatingMonth = heatingMonths.some((m) => m.value === selectedMonth);
+    
+    // Auto-switch energy mode when user selects a month
+    if (isCoolingMonth && energyMode !== "cooling") {
+      setUserSetting?.("energyMode", "cooling");
+    } else if (isHeatingMonth && energyMode !== "heating") {
+      setUserSetting?.("energyMode", "heating");
     }
-  }, [energyMode, selectedMonth, activeMonths]);
+    // For transition months (March, April), keep current mode or default to heating
+  }, [selectedMonth, coolingMonths, heatingMonths, energyMode, setUserSetting]);
 
   const calculateMonthlyEstimate = useCallback(
     (temps, setEstimate, electricityRate) => {
@@ -421,7 +598,13 @@ const MonthlyBudgetPlanner = () => {
         solarExposure,
       };
       if (!temps || temps.length === 0) {
-        if (energyMode === "cooling") {
+        // Determine if this is a cooling or heating month
+        const isCoolingMonth = coolingMonths.some((m) => m.value === selectedMonth);
+        const isHeatingMonth = heatingMonths.some((m) => m.value === selectedMonth);
+        // For transition months (March, April), use energyMode setting
+        const useCooling = isCoolingMonth || (energyMode === "cooling" && !isHeatingMonth);
+        
+        if (useCooling) {
           estimateTypicalCDDCost({
             ...commonParams,
             month: selectedMonth,
@@ -440,7 +623,13 @@ const MonthlyBudgetPlanner = () => {
         return;
       }
 
-      if (energyMode === "cooling") {
+      // Determine if this is a cooling or heating month
+      const isCoolingMonth = coolingMonths.some((m) => m.value === selectedMonth);
+      const isHeatingMonth = heatingMonths.some((m) => m.value === selectedMonth);
+      // For transition months (March, April), use energyMode setting
+      const useCooling = isCoolingMonth || (energyMode === "cooling" && !isHeatingMonth);
+      
+      if (useCooling) {
         const coolingCapacityKbtu =
           primarySystem === "heatPump" ? capacity : coolingCapacity;
         const seer2 = efficiency;
@@ -598,6 +787,8 @@ const MonthlyBudgetPlanner = () => {
       gasCost,
       hspf2,
       useElectricAuxHeat,
+      coolingMonths,
+      heatingMonths,
     ]
   );
 
@@ -1330,17 +1521,84 @@ const MonthlyBudgetPlanner = () => {
 
           {/* Thermostat Schedule Card - Same as 7-day planner */}
           {energyMode === "heating" && (
-            <ThermostatScheduleCard
-              indoorTemp={indoorTemp}
-              daytimeTime={daytimeTime}
-              nighttimeTime={nighttimeTime}
-              nighttimeTemp={nighttimeTemp}
-              onDaytimeTimeChange={setDaytimeTime}
-              onNighttimeTimeChange={setNighttimeTime}
-              onNighttimeTempChange={setNighttimeTemp}
-              onIndoorTempChange={setIndoorTemp}
-              setUserSetting={setUserSetting}
-            />
+            <>
+              <ThermostatScheduleCard
+                indoorTemp={indoorTemp}
+                daytimeTime={daytimeTime}
+                nighttimeTime={nighttimeTime}
+                nighttimeTemp={nighttimeTemp}
+                onDaytimeTimeChange={setDaytimeTime}
+                onNighttimeTimeChange={setNighttimeTime}
+                onNighttimeTempChange={setNighttimeTemp}
+                onIndoorTempChange={setIndoorTemp}
+                setUserSetting={setUserSetting}
+              />
+              
+              {/* ASHRAE Standards Button */}
+              <div className="mt-4 flex flex-col items-center gap-3">
+                <button
+                  onClick={() => {
+                    // ASHRAE Standard 55 recommendations (50% RH):
+                    // Winter heating: 68.5-74.5°F (use 70°F as middle) for day, 68°F for night
+                    setIndoorTemp(70); // ASHRAE Standard 55: 70°F for winter (middle of 68.5-74.5°F range)
+                    setNighttimeTemp(68); // ASHRAE Standard 55: 68°F for sleep/unoccupied in winter
+                    if (setUserSetting) {
+                      setUserSetting("winterThermostat", 70);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 dark:from-blue-700 dark:to-indigo-700 dark:hover:from-blue-600 dark:hover:to-indigo-600 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
+                  title="Apply ASHRAE Standard 55 thermal comfort recommendations"
+                >
+                  <CheckCircle2 size={16} />
+                  Apply ASHRAE Standard 55
+                </button>
+                <a
+                  href="https://www.ashrae.org/technical-resources/standards-and-guidelines"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  title="Learn more about ASHRAE standards"
+                >
+                  Learn more
+                </a>
+                <p className="text-xs text-center text-gray-500 dark:text-gray-400 max-w-2xl">
+                  ASHRAE Standard 55 provides thermal comfort recommendations: 70°F day / 68°F night (winter) for occupied spaces at 50% relative humidity.
+                </p>
+              </div>
+            </>
+          )}
+          
+          {/* Cooling mode - show summer ASHRAE button */}
+          {energyMode === "cooling" && (
+            <div className="mt-4 flex flex-col items-center gap-3">
+              <button
+                onClick={() => {
+                  // ASHRAE Standard 55 recommendations (50% RH):
+                  // Summer cooling: 73-79°F (use 76°F as middle) for day, 78°F for night
+                  if (setUserSetting) {
+                    setUserSetting("summerThermostat", 76); // ASHRAE Standard 55: 76°F for summer (middle of 73-79°F range)
+                    setUserSetting("summerThermostatNight", 78); // ASHRAE Standard 55: 78°F for sleep/unoccupied in summer
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 dark:from-blue-700 dark:to-indigo-700 dark:hover:from-blue-600 dark:hover:to-indigo-600 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
+                title="Apply ASHRAE Standard 55 thermal comfort recommendations"
+              >
+                <CheckCircle2 size={16} />
+                Apply ASHRAE Standard 55
+              </button>
+              <a
+                href="https://www.ashrae.org/technical-resources/standards-and-guidelines"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                title="Learn more about ASHRAE standards"
+              >
+                Learn more
+              </a>
+              <p className="text-xs text-center text-gray-500 dark:text-gray-400 max-w-2xl">
+                ASHRAE Standard 55 provides thermal comfort recommendations: 76°F day / 78°F night (summer) for occupied spaces at 50% relative humidity.
+              </p>
+            </div>
           )}
 
           {/* Aux Heat Toggle - Show for heat pumps */}
@@ -1806,54 +2064,23 @@ const MonthlyBudgetPlanner = () => {
                 <Thermometer size={18} />
                 Winter Heating (Dec-Feb)
               </h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Daytime Setting (6am-10pm)
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min="60"
-                      max="78"
-                      value={userSettings?.winterThermostatDay ?? 70}
-                      onChange={(e) =>
-                        setUserSetting?.(
-                          "winterThermostatDay",
-                          Number(e.target.value)
-                        )
-                      }
-                      className="flex-grow"
-                    />
-                    <span className="font-bold text-2xl text-blue-600 dark:text-blue-400 w-16 text-right">
-                      {userSettings?.winterThermostatDay ?? 70}°F
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Nighttime Setting (10pm-6am)
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min="60"
-                      max="78"
-                      value={userSettings?.winterThermostatNight ?? 65}
-                      onChange={(e) =>
-                        setUserSetting?.(
-                          "winterThermostatNight",
-                          Number(e.target.value)
-                        )
-                      }
-                      className="flex-grow"
-                    />
-                    <span className="font-bold text-2xl text-blue-600 dark:text-blue-400 w-16 text-right">
-                      {userSettings?.winterThermostatNight ?? 65}°F
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <ThermostatScheduleCard
+                indoorTemp={userSettings?.winterThermostatDay ?? 70}
+                daytimeTime={winterDayTime}
+                nighttimeTime={winterNightTime}
+                nighttimeTemp={userSettings?.winterThermostatNight ?? 68}
+                onDaytimeTimeChange={setWinterDayTime}
+                onNighttimeTimeChange={setWinterNightTime}
+                onNighttimeTempChange={(temp) => {
+                  setUserSetting?.("winterThermostatNight", temp);
+                }}
+                onIndoorTempChange={(temp) => {
+                  setUserSetting?.("winterThermostatDay", temp);
+                }}
+                setUserSetting={setUserSetting}
+                daytimeSettingKey="winterThermostatDay"
+                skipComfortSettingsUpdate={true}
+              />
             </div>
 
             {/* Summer Settings */}
@@ -1862,66 +2089,62 @@ const MonthlyBudgetPlanner = () => {
                 <Thermometer size={18} />
                 Summer Cooling (Jun-Aug)
               </h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Daytime Setting (6am-10pm)
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min="68"
-                      max="80"
-                      value={userSettings?.summerThermostat ?? 74}
-                      onChange={(e) =>
-                        setUserSetting?.(
-                          "summerThermostat",
-                          Number(e.target.value)
-                        )
-                      }
-                      className="flex-grow"
-                    />
-                    <span className="font-bold text-2xl text-cyan-600 dark:text-cyan-400 w-16 text-right">
-                      {userSettings?.summerThermostat ?? 74}°F
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Nighttime Setting (10pm-6am)
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min="68"
-                      max="82"
-                      value={
-                        userSettings?.summerThermostatNight ??
-                        userSettings?.summerThermostat ??
-                        76
-                      }
-                      onChange={(e) =>
-                        setUserSetting?.(
-                          "summerThermostatNight",
-                          Number(e.target.value)
-                        )
-                      }
-                      className="flex-grow"
-                    />
-                    <span className="font-bold text-2xl text-cyan-600 dark:text-cyan-400 w-16 text-right">
-                      {userSettings?.summerThermostatNight ??
-                        userSettings?.summerThermostat ??
-                        76}
-                      °F
-                    </span>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 italic">
-                  Setting nighttime temp higher than daytime can save energy
-                  while you sleep
-                </p>
-              </div>
+              <ThermostatScheduleCard
+                indoorTemp={userSettings?.summerThermostat ?? 76}
+                daytimeTime={summerDayTime}
+                nighttimeTime={summerNightTime}
+                nighttimeTemp={userSettings?.summerThermostatNight ?? 78}
+                onDaytimeTimeChange={setSummerDayTime}
+                onNighttimeTimeChange={setSummerNightTime}
+                onNighttimeTempChange={(temp) => {
+                  setUserSetting?.("summerThermostatNight", temp);
+                }}
+                onIndoorTempChange={(temp) => {
+                  setUserSetting?.("summerThermostat", temp);
+                }}
+                setUserSetting={setUserSetting}
+                daytimeSettingKey="summerThermostat"
+                skipComfortSettingsUpdate={true}
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 italic mt-4">
+                Setting nighttime temp higher than daytime can save energy
+                while you sleep
+              </p>
             </div>
+          </div>
+          
+          {/* ASHRAE Standards Button */}
+          <div className="mt-4 flex flex-col items-center gap-3">
+            <button
+              onClick={() => {
+                // ASHRAE Standard 55 recommendations (50% RH):
+                // Winter heating: 68.5-74.5°F (use 70°F as middle) for day, 68°F for night
+                // Summer cooling: 73-79°F (use 76°F as middle) for day, 78°F for night
+                if (setUserSetting) {
+                  setUserSetting("winterThermostatDay", 70); // ASHRAE Standard 55: 70°F for winter (middle of 68.5-74.5°F range)
+                  setUserSetting("winterThermostatNight", 68); // ASHRAE Standard 55: 68°F for sleep/unoccupied in winter
+                  setUserSetting("summerThermostat", 76); // ASHRAE Standard 55: 76°F for summer (middle of 73-79°F range)
+                  setUserSetting("summerThermostatNight", 78); // ASHRAE Standard 55: 78°F for sleep/unoccupied in summer
+                }
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 dark:from-blue-700 dark:to-indigo-700 dark:hover:from-blue-600 dark:hover:to-indigo-600 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
+              title="Apply ASHRAE Standard 55 thermal comfort recommendations"
+            >
+              <CheckCircle2 size={16} />
+              Apply ASHRAE Standard 55
+            </button>
+            <a
+              href="https://www.ashrae.org/technical-resources/standards-and-guidelines"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              title="Learn more about ASHRAE standards"
+            >
+              Learn more
+            </a>
+            <p className="text-xs text-center text-gray-500 dark:text-gray-400 max-w-2xl">
+              ASHRAE Standard 55 provides thermal comfort recommendations: 70°F day / 68°F night (winter) and 76°F day / 78°F night (summer) for occupied spaces at 50% relative humidity. Values are pre-filled from your Comfort Settings when available.
+            </p>
           </div>
 
           {/* Annual Cost Estimate */}
@@ -1933,53 +2156,233 @@ const MonthlyBudgetPlanner = () => {
               <div className="text-5xl font-black text-indigo-600 dark:text-indigo-400 mb-4">
                 $
                 {(() => {
-                  // Calculate approximate annual cost
-                  // Winter: 4 months at weighted avg of day/night temps
-                  // Summer: 3 months at summer setting
-                  // Shoulder seasons: minimal cost (not calculated for simplicity)
-                  const winterDay = indoorTemp;
-                  const winterNight = nighttimeTemp;
-                  const summerTemp = userSettings?.summerThermostat ?? 74;
-
-                  // Weighted average for winter (16 hours day, 8 hours night)
-                  const winterAvgTemp = (winterDay * 16 + winterNight * 8) / 24;
-
-                  // Rough monthly estimate (simplified from full calculation)
-                  const winterMonthly =
-                    (winterAvgTemp - 35) * squareFeet * 0.015; // Rough heating cost formula
-                  const summerMonthly =
-                    (summerTemp < 75 ? 0 : 78 - summerTemp) *
-                    squareFeet *
-                    0.012; // Rough cooling cost formula
-
-                  const annualCost = winterMonthly * 4 + summerMonthly * 3;
-                  return Math.max(0, annualCost).toFixed(2);
+                  // Calculate both annual heating and cooling costs
+                  const januaryHDD = getTypicalHDD(1); // January (coldest month)
+                  const julyCDD = getTypicalCDD(7); // July (hottest month)
+                  const annualHDD = getAnnualHDD(locationData.city, locationData.state);
+                  const annualCDD = getAnnualCDD(locationData.city, locationData.state);
+                  
+                  let annualHeatingCost = 0;
+                  let annualCoolingCost = 0;
+                  
+                  // Calculate annual heating cost from January estimate
+                  // Account for indoor temperature settings (weighted average of day/night)
+                  const winterDayTemp = userSettings?.winterThermostatDay ?? 70;
+                  const winterNightTemp = userSettings?.winterThermostatNight ?? 68;
+                  // Weighted average: 16 hours day (6am-10pm), 8 hours night (10pm-6am)
+                  const avgWinterIndoorTemp = (winterDayTemp * 16 + winterNightTemp * 8) / 24;
+                  
+                  if (januaryHDD > 0 && annualHDD > 0) {
+                    // Get January heating estimate (uses 65°F base)
+                    const januaryHeatingEstimate = estimateMonthlyHeatingCostFromHDD({
+                      hdd: januaryHDD,
+                      squareFeet,
+                      insulationLevel,
+                      homeShape,
+                      ceilingHeight,
+                      hspf: hspf2,
+                      electricityRate: utilityCost,
+                    });
+                    
+                    if (januaryHeatingEstimate && januaryHeatingEstimate.cost > 0) {
+                      // Scale by degree days to get annual
+                      let baseAnnualCost = (januaryHeatingEstimate.cost / januaryHDD) * annualHDD;
+                      
+                      // Adjust for indoor temperature: HDD uses 65°F base, but user may set different temp
+                      // If user sets 70°F instead of 65°F, heating load increases proportionally
+                      // Typical winter avg outdoor temp is ~35°F, so base delta is 65-35=30°F
+                      // With 70°F indoor, delta is 70-35=35°F, so multiplier is 35/30 = 1.167
+                      const baseOutdoorTemp = 35; // Typical winter average
+                      const baseDelta = 65 - baseOutdoorTemp; // 30°F
+                      const actualDelta = avgWinterIndoorTemp - baseOutdoorTemp;
+                      const tempMultiplier = actualDelta / baseDelta;
+                      
+                      annualHeatingCost = baseAnnualCost * tempMultiplier;
+                    }
+                  }
+                  
+                  // Calculate annual cooling cost from July estimate
+                  // Account for indoor temperature settings (weighted average of day/night)
+                  const summerDayTemp = userSettings?.summerThermostat ?? 76;
+                  const summerNightTemp = userSettings?.summerThermostatNight ?? 78;
+                  // Weighted average: 16 hours day (6am-10pm), 8 hours night (10pm-6am)
+                  const avgSummerIndoorTemp = (summerDayTemp * 16 + summerNightTemp * 8) / 24;
+                  
+                  if (julyCDD > 0 && annualCDD > 0) {
+                    // Get July cooling estimate (uses 65°F base)
+                    const julyCoolingEstimate = estimateMonthlyCoolingCostFromCDD({
+                      cdd: julyCDD,
+                      squareFeet,
+                      insulationLevel,
+                      homeShape,
+                      ceilingHeight,
+                      seer2: efficiency,
+                      electricityRate: utilityCost,
+                      capacity,
+                      solarExposure,
+                    });
+                    
+                    if (julyCoolingEstimate && julyCoolingEstimate.cost > 0) {
+                      // Scale by degree days to get annual
+                      let baseAnnualCost = (julyCoolingEstimate.cost / julyCDD) * annualCDD;
+                      
+                      // Adjust for indoor temperature: CDD uses 65°F base, but user may set different temp
+                      // If user sets 76°F instead of 65°F, cooling load increases proportionally
+                      // Typical summer avg outdoor temp is ~85°F, so base delta is 85-65=20°F
+                      // With 76°F indoor, delta is 85-76=9°F, so multiplier is 9/20 = 0.45
+                      const baseOutdoorTemp = 85; // Typical summer average
+                      const baseDelta = baseOutdoorTemp - 65; // 20°F
+                      const actualDelta = baseOutdoorTemp - avgSummerIndoorTemp;
+                      const tempMultiplier = actualDelta / baseDelta;
+                      
+                      annualCoolingCost = baseAnnualCost * tempMultiplier;
+                    }
+                  }
+                  
+                  const totalAnnualCost = annualHeatingCost + annualCoolingCost;
+                  return totalAnnualCost > 0 ? Math.max(0, totalAnnualCost).toFixed(2) : "—";
                 })()}
               </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-3">
-                  <p className="font-semibold text-blue-700 dark:text-blue-300">
-                    Winter (4 mo.)
+              {(() => {
+                // Calculate both annual heating and cooling costs for display
+                const januaryHDD = getTypicalHDD(1);
+                const julyCDD = getTypicalCDD(7);
+                const annualHDD = getAnnualHDD(locationData.city, locationData.state);
+                const annualCDD = getAnnualCDD(locationData.city, locationData.state);
+                
+                let annualHeatingCost = 0;
+                let annualCoolingCost = 0;
+                let januaryHeatingEstimate = null;
+                let julyCoolingEstimate = null;
+                
+                // Account for indoor temperature settings (weighted average of day/night)
+                const winterDayTemp = userSettings?.winterThermostatDay ?? 70;
+                const winterNightTemp = userSettings?.winterThermostatNight ?? 68;
+                const avgWinterIndoorTemp = (winterDayTemp * 16 + winterNightTemp * 8) / 24;
+                
+                const summerDayTemp = userSettings?.summerThermostat ?? 76;
+                const summerNightTemp = userSettings?.summerThermostatNight ?? 78;
+                const avgSummerIndoorTemp = (summerDayTemp * 16 + summerNightTemp * 8) / 24;
+                
+                if (januaryHDD > 0 && annualHDD > 0) {
+                  januaryHeatingEstimate = estimateMonthlyHeatingCostFromHDD({
+                    hdd: januaryHDD,
+                    squareFeet,
+                    insulationLevel,
+                    homeShape,
+                    ceilingHeight,
+                    hspf: hspf2,
+                    electricityRate: utilityCost,
+                  });
+                  
+                  if (januaryHeatingEstimate && januaryHeatingEstimate.cost > 0) {
+                    let baseAnnualCost = (januaryHeatingEstimate.cost / januaryHDD) * annualHDD;
+                    
+                    // Adjust for indoor temperature
+                    const baseOutdoorTemp = 35;
+                    const baseDelta = 65 - baseOutdoorTemp;
+                    const actualDelta = avgWinterIndoorTemp - baseOutdoorTemp;
+                    const tempMultiplier = actualDelta / baseDelta;
+                    
+                    annualHeatingCost = baseAnnualCost * tempMultiplier;
+                  }
+                }
+                
+                if (julyCDD > 0 && annualCDD > 0) {
+                  julyCoolingEstimate = estimateMonthlyCoolingCostFromCDD({
+                    cdd: julyCDD,
+                    squareFeet,
+                    insulationLevel,
+                    homeShape,
+                    ceilingHeight,
+                    seer2: efficiency,
+                    electricityRate: utilityCost,
+                    capacity,
+                    solarExposure,
+                  });
+                  
+                  if (julyCoolingEstimate && julyCoolingEstimate.cost > 0) {
+                    let baseAnnualCost = (julyCoolingEstimate.cost / julyCDD) * annualCDD;
+                    
+                    // Adjust for indoor temperature
+                    const baseOutdoorTemp = 85;
+                    const baseDelta = baseOutdoorTemp - 65;
+                    const actualDelta = baseOutdoorTemp - avgSummerIndoorTemp;
+                    const tempMultiplier = actualDelta / baseDelta;
+                    
+                    annualCoolingCost = baseAnnualCost * tempMultiplier;
+                  }
+                }
+                
+                if (annualHeatingCost > 0 || annualCoolingCost > 0) {
+                  const januaryRatio = januaryHDD > 0 && annualHDD > 0 ? januaryHDD / annualHDD : 0;
+                  const julyRatio = julyCDD > 0 && annualCDD > 0 ? julyCDD / annualCDD : 0;
+                  const totalAnnualCost = annualHeatingCost + annualCoolingCost;
+                  
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                        <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-3">
+                          <p className="font-semibold text-blue-700 dark:text-blue-300">
+                            Annual Heating
+                          </p>
+                          <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                            ${annualHeatingCost.toFixed(2)}
+                          </p>
+                          {januaryHeatingEstimate && januaryHDD > 0 && annualHDD > 0 && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Jan: ${januaryHeatingEstimate.cost.toFixed(2)} ({januaryHDD} HDD, {januaryRatio * 100}% of year)
+                            </p>
+                          )}
+                        </div>
+                        <div className="bg-cyan-50 dark:bg-cyan-900/30 rounded-lg p-3">
+                          <p className="font-semibold text-cyan-700 dark:text-cyan-300">
+                            Annual Cooling
+                          </p>
+                          <p className="text-lg font-bold text-cyan-600 dark:text-cyan-400">
+                            ${annualCoolingCost.toFixed(2)}
+                          </p>
+                          {julyCoolingEstimate && julyCDD > 0 && annualCDD > 0 && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Jul: ${julyCoolingEstimate.cost.toFixed(2)} ({julyCDD} CDD, {julyRatio * 100}% of year)
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="bg-indigo-50 dark:bg-indigo-900/30 rounded-lg p-3 mb-4">
+                        <p className="font-semibold text-indigo-700 dark:text-indigo-300 mb-1">
+                          Total Annual HVAC Cost
+                        </p>
+                        <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                          ${totalAnnualCost.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                          = ${annualHeatingCost.toFixed(2)} (heating) + ${annualCoolingCost.toFixed(2)} (cooling)
+                        </p>
+                      </div>
+                      {januaryHeatingEstimate && januaryHDD > 0 && annualHDD > 0 && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 font-semibold">
+                          Heating: (${januaryHeatingEstimate.cost.toFixed(2)} / {januaryHDD} HDD) × {annualHDD} HDD = ${annualHeatingCost.toFixed(2)}
+                        </p>
+                      )}
+                      {julyCoolingEstimate && julyCDD > 0 && annualCDD > 0 && (
+                        <p className="text-xs text-cyan-600 dark:text-cyan-400 mt-2 font-semibold">
+                          Cooling: (${julyCoolingEstimate.cost.toFixed(2)} / {julyCDD} CDD) × {annualCDD} CDD = ${annualCoolingCost.toFixed(2)}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-4 italic">
+                        * Uses physics-based calculation scaled by degree days. Accounts for seasonal variation (summer bills are much lower than winter).
+                      </p>
+                    </>
+                  );
+                }
+                
+                return (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
+                    Enter a location above to see annual estimate
                   </p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
-                    Avg{" "}
-                    {effectiveIndoorTemp.toFixed(1)}
-                    °F
-                  </p>
-                </div>
-                <div className="bg-cyan-50 dark:bg-cyan-900/30 rounded-lg p-3">
-                  <p className="font-semibold text-cyan-700 dark:text-cyan-300">
-                    Summer (3 mo.)
-                  </p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
-                    {userSettings?.summerThermostat ?? 74}°F constant
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-4 italic">
-                * Simplified estimate for budgeting. Actual costs vary with
-                weather, insulation, and system efficiency.
-              </p>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -2156,13 +2559,24 @@ const MonthlyBudgetPlanner = () => {
                       userSettings?.summerThermostatNight ?? summerDay;
                     const winterAvg = (winterDay * 16 + winterNight * 8) / 24;
                     const summerAvg = (summerDay * 16 + summerNight * 8) / 24;
+                    
+                    // Get location-aware baseline temperature
+                    const baselineTemp = getLocationAwareBaselineTemp(locationData);
+                    
+                    // Calculate adaptive cost factor based on actual heat loss
+                    const typicalHeatLossFactor = (squareFeet * 22.67 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1)) / 70;
+                    const actualHeatLossFactor = getEffectiveHeatLossFactor;
+                    const costFactor = 0.008 * (actualHeatLossFactor / Math.max(100, typicalHeatLossFactor));
+                    
+                    // Use standardized formulas with adaptive factors
                     const winterMonthly = Math.max(
                       0,
-                      (winterAvg - 35) * squareFeet * 0.015
+                      (winterAvg - baselineTemp) * squareFeet * costFactor
                     );
+                    // Summer: 0.012 factor accounts for SEER2 efficiency
                     const summerMonthly = Math.max(
                       0,
-                      (summerAvg - 68) * squareFeet * 0.01
+                      (summerAvg - 68) * squareFeet * 0.012
                     );
                     return Math.max(
                       0,
@@ -2199,14 +2613,22 @@ const MonthlyBudgetPlanner = () => {
                       userSettings?.summerThermostatNight ?? summerDay;
                     const winterAvg = (winterDay * 16 + winterNight * 8) / 24;
                     const summerAvg = (summerDay * 16 + summerNight * 8) / 24;
-                    // Adjust for location B climate (simplified)
+                    // Location B: Use colder baseline (30°F) for colder climates
+                    const baselineTempB = 30; // Colder climate baseline
+                    
+                    // Calculate adaptive cost factor based on actual heat loss
+                    const typicalHeatLossFactorB = (squareFeet * 22.67 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1)) / 70;
+                    const actualHeatLossFactorB = getEffectiveHeatLossFactor;
+                    const costFactorB = 0.008 * (actualHeatLossFactorB / Math.max(100, typicalHeatLossFactorB));
+                    
                     const winterMonthly = Math.max(
                       0,
-                      (winterAvg - 30) * squareFeet * 0.016
+                      (winterAvg - baselineTempB) * squareFeet * costFactorB
                     );
+                    // Summer: Standardized to 0.012 factor
                     const summerMonthly = Math.max(
                       0,
-                      (summerAvg - 68) * squareFeet * 0.011
+                      (summerAvg - 68) * squareFeet * 0.012
                     );
                     return Math.max(
                       0,
@@ -2534,6 +2956,514 @@ const MonthlyBudgetPlanner = () => {
         >
           Compare Upgrade →
         </Link>
+      </div>
+
+      {/* Live Math Calculations Pulldown */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-8">
+        <button
+          onClick={() => setShowCalculations(!showCalculations)}
+          className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+              <Calculator size={24} className="text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
+          </div>
+          {showCalculations ? (
+            <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+          ) : (
+            <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+          )}
+        </button>
+
+        {showCalculations && (
+          <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+            {/* Building Characteristics */}
+            <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Building Characteristics</h4>
+              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                <div className="flex justify-between">
+                  <span>Square Feet:</span>
+                  <span className="font-bold">{squareFeet.toLocaleString()} sq ft</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Insulation Level:</span>
+                  <span className="font-bold">{insulationLevel.toFixed(2)}x</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Home Shape Factor:</span>
+                  <span className="font-bold">{homeShape.toFixed(2)}x</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Ceiling Height:</span>
+                  <span className="font-bold">{ceilingHeight} ft</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Ceiling Multiplier:</span>
+                  <span className="font-bold">{(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}x</span>
+                </div>
+                <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
+                  <div className="flex justify-between">
+                    <span>Design Heat Loss @ 70°F ΔT:</span>
+                    <span className="font-bold text-blue-600 dark:text-blue-400">
+                      {Math.round(squareFeet * 22.67 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1) / 1000) * 1000} BTU/hr
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    = {squareFeet.toLocaleString()} × 22.67 × {insulationLevel.toFixed(2)} × {homeShape.toFixed(2)} × {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}
+                  </div>
+                </div>
+                {energyMode === "heating" ? (
+                  <div className="pt-2">
+                    <div className="flex justify-between">
+                      <span>BTU Loss per °F:</span>
+                      <span className="font-bold text-blue-600 dark:text-blue-400">
+                        {((squareFeet * 22.67 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1)) / 70).toFixed(1)} BTU/hr/°F
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
+                    <div className="flex justify-between">
+                      <span>Design Heat Gain @ 20°F ΔT:</span>
+                      <span className="font-bold text-blue-600 dark:text-blue-400">
+                        {Math.round(squareFeet * 28.0 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1) * solarExposure / 1000) * 1000} BTU/hr
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                      = {squareFeet.toLocaleString()} × 28.0 × {insulationLevel.toFixed(2)} × {homeShape.toFixed(2)} × {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)} × {solarExposure.toFixed(2)}
+                    </div>
+                    <div className="pt-2">
+                      <div className="flex justify-between">
+                        <span>BTU Gain per °F:</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400">
+                          {((squareFeet * 28.0 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1) * solarExposure) / 20.0).toFixed(1)} BTU/hr/°F
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* System Configuration */}
+            <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
+              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">System Configuration</h4>
+              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                <div className="flex justify-between">
+                  <span>Primary System:</span>
+                  <span className="font-bold">{primarySystem === "heatPump" ? "Heat Pump" : "Gas Furnace"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Capacity:</span>
+                  <span className="font-bold">{capacity}k BTU</span>
+                </div>
+                {energyMode === "heating" ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>HSPF2:</span>
+                      <span className="font-bold">{hspf2 || efficiency}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Tons:</span>
+                      <span className="font-bold">
+                        {(() => {
+                          const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+                          return tonsMap[capacity] || 3.0;
+                        })()} tons
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span>SEER2:</span>
+                      <span className="font-bold">{efficiency}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Cooling Tons:</span>
+                      <span className="font-bold">
+                        {(() => {
+                          const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+                          return tonsMap[capacity] || 3.0;
+                        })()} tons
+                      </span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between">
+                  <span>Electricity Rate:</span>
+                  <span className="font-bold">${utilityCost.toFixed(3)} / kWh</span>
+                </div>
+                {primarySystem === "gasFurnace" && (
+                  <>
+                    <div className="flex justify-between">
+                      <span>AFUE:</span>
+                      <span className="font-bold">{(afue * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Gas Cost:</span>
+                      <span className="font-bold">${gasCost.toFixed(2)} / therm</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Temperature Settings */}
+            <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
+              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Temperature Settings</h4>
+              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                {energyMode === "heating" ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Daytime Temp:</span>
+                      <span className="font-bold">{indoorTemp}°F</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Nighttime Temp:</span>
+                      <span className="font-bold">{nighttimeTemp}°F</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Day Start:</span>
+                      <span className="font-bold">{daytimeTime}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Night Start:</span>
+                      <span className="font-bold">{nighttimeTime}</span>
+                    </div>
+                    <div className="pt-2 border-t border-green-300 dark:border-green-700">
+                      <div className="flex justify-between">
+                        <span>Effective Indoor Temp:</span>
+                        <span className="font-bold text-green-600 dark:text-green-400">{effectiveIndoorTemp.toFixed(1)}°F</span>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        Weighted average based on day/night schedule
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Daytime Temp:</span>
+                      <span className="font-bold">{summerThermostat || 75}°F</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Nighttime Temp:</span>
+                      <span className="font-bold">{summerThermostatNight || 72}°F</span>
+                    </div>
+                    <div className="pt-2 border-t border-green-300 dark:border-green-700">
+                      <div className="flex justify-between">
+                        <span>Effective Indoor Temp:</span>
+                        <span className="font-bold text-green-600 dark:text-green-400">{effectiveIndoorTemp.toFixed(1)}°F</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Example Day Calculation */}
+            {monthlyEstimate && (() => {
+              const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+              const tons = tonsMap[capacity] || 3.0;
+              const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
+              const exampleOutdoorTemp = energyMode === "heating" ? 35 : 85;
+              const tempDiff = energyMode === "heating" 
+                ? Math.max(0, effectiveIndoorTemp - exampleOutdoorTemp)
+                : Math.max(0, exampleOutdoorTemp - effectiveIndoorTemp);
+              
+              if (energyMode === "heating") {
+                const estimatedDesignHeatLoss = squareFeet * 22.67 * insulationLevel * homeShape * ceilingMultiplier;
+                const btuLossPerDegF = estimatedDesignHeatLoss / 70;
+                const buildingHeatLoss = btuLossPerDegF * tempDiff;
+                const capFactor = Math.max(0.3, 1 - (Math.abs(0 - exampleOutdoorTemp) / 100) * 0.5);
+                const thermalOutput = tons * 12000 * capFactor;
+                const compressorDelivered = Math.min(thermalOutput, buildingHeatLoss);
+                const auxHeatBtu = Math.max(0, buildingHeatLoss - compressorDelivered);
+                const baseHspf = hspf2 || efficiency;
+                const compressorEnergyPerHour = compressorDelivered / (baseHspf * 1000);
+                const auxHeatEnergyPerHour = auxHeatBtu / 3412.14;
+                const effectiveAuxEnergyPerHour = useElectricAuxHeat ? auxHeatEnergyPerHour : 0;
+                const totalDayEnergy = (compressorEnergyPerHour + effectiveAuxEnergyPerHour) * 24;
+                const dayCost = totalDayEnergy * utilityCost;
+
+                return (
+                  <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+                    <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Example Day Calculation ({exampleOutdoorTemp}°F outdoor)</h4>
+                    <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                      <div className="flex justify-between">
+                        <span>Temperature Difference:</span>
+                        <span className="font-bold">{tempDiff.toFixed(1)}°F</span>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        = {effectiveIndoorTemp.toFixed(1)}°F - {exampleOutdoorTemp}°F
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Building Heat Loss:</span>
+                        <span className="font-bold text-orange-600 dark:text-orange-400">{(buildingHeatLoss / 1000).toFixed(1)}k BTU/hr</span>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        = {btuLossPerDegF.toFixed(1)} BTU/hr/°F × {tempDiff.toFixed(1)}°F
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Capacity Factor:</span>
+                        <span className="font-bold">{capFactor.toFixed(3)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Heat Pump Output:</span>
+                        <span className="font-bold text-orange-600 dark:text-orange-400">{(thermalOutput / 1000).toFixed(1)}k BTU/hr</span>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        = {tons} tons × 12,000 × {capFactor.toFixed(3)}
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Compressor Delivered:</span>
+                        <span className="font-bold text-orange-600 dark:text-orange-400">{(compressorDelivered / 1000).toFixed(1)}k BTU/hr</span>
+                      </div>
+                      {auxHeatBtu > 0 && (
+                        <>
+                          <div className="flex justify-between">
+                            <span>Aux Heat Needed:</span>
+                            <span className="font-bold text-red-600 dark:text-red-400">{(auxHeatBtu / 1000).toFixed(1)}k BTU/hr</span>
+                          </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            = {(buildingHeatLoss / 1000).toFixed(1)}k - {(compressorDelivered / 1000).toFixed(1)}k
+                          </div>
+                        </>
+                      )}
+                      <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
+                        <div className="flex justify-between">
+                          <span>Compressor Energy/Hour:</span>
+                          <span className="font-bold">{compressorEnergyPerHour.toFixed(3)} kWh</span>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          = {(compressorDelivered / 1000).toFixed(1)}k ÷ ({baseHspf} × 1,000)
+                        </div>
+                        {effectiveAuxEnergyPerHour > 0 && (
+                          <>
+                            <div className="flex justify-between">
+                              <span>Aux Energy/Hour:</span>
+                              <span className="font-bold text-red-600 dark:text-red-400">{effectiveAuxEnergyPerHour.toFixed(3)} kWh</span>
+                            </div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400">
+                              = {(auxHeatBtu / 1000).toFixed(1)}k ÷ 3,412.14
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between">
+                          <span>Total Energy/Day:</span>
+                          <span className="font-bold text-orange-600 dark:text-orange-400">{totalDayEnergy.toFixed(2)} kWh</span>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          = ({compressorEnergyPerHour.toFixed(3)} + {effectiveAuxEnergyPerHour.toFixed(3)}) × 24
+                        </div>
+                        <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
+                          <div className="flex justify-between">
+                            <span>Daily Cost:</span>
+                            <span className="font-bold text-orange-600 dark:text-orange-400">${dayCost.toFixed(2)}</span>
+                          </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            = {totalDayEnergy.toFixed(2)} kWh × ${utilityCost.toFixed(3)}/kWh
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              } else {
+                const designHeatGain = squareFeet * 28.0 * insulationLevel * homeShape * ceilingMultiplier * solarExposure;
+                const btuGainPerDegF = designHeatGain / 20.0;
+                const totalDailyHeatGainBtu = btuGainPerDegF * tempDiff * 24;
+                const seer2 = efficiency;
+                const dailyKWh = totalDailyHeatGainBtu / (seer2 * 1000);
+                const dayCost = dailyKWh * utilityCost;
+
+                return (
+                  <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+                    <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Example Day Calculation ({exampleOutdoorTemp}°F outdoor)</h4>
+                    <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                      <div className="flex justify-between">
+                        <span>Temperature Difference:</span>
+                        <span className="font-bold">{tempDiff.toFixed(1)}°F</span>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        = {exampleOutdoorTemp}°F - {effectiveIndoorTemp.toFixed(1)}°F
+                      </div>
+                      <div className="flex justify-between">
+                        <span>BTU Gain per °F:</span>
+                        <span className="font-bold">{btuGainPerDegF.toFixed(1)} BTU/hr/°F</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Total Daily Heat Gain:</span>
+                        <span className="font-bold text-orange-600 dark:text-orange-400">{(totalDailyHeatGainBtu / 1000).toFixed(1)}k BTU</span>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        = {btuGainPerDegF.toFixed(1)} × {tempDiff.toFixed(1)}°F × 24 hours
+                      </div>
+                      <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
+                        <div className="flex justify-between">
+                          <span>Daily Energy:</span>
+                          <span className="font-bold text-orange-600 dark:text-orange-400">{dailyKWh.toFixed(2)} kWh</span>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          = {(totalDailyHeatGainBtu / 1000).toFixed(1)}k ÷ ({seer2} × 1,000)
+                        </div>
+                        <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
+                          <div className="flex justify-between">
+                            <span>Daily Cost:</span>
+                            <span className="font-bold text-orange-600 dark:text-orange-400">${dayCost.toFixed(2)}</span>
+                          </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            = {dailyKWh.toFixed(2)} kWh × ${utilityCost.toFixed(3)}/kWh
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+            })()}
+
+            {/* Monthly Summary */}
+            {monthlyEstimate && (
+              <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Monthly Summary</h4>
+                <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                  <div className="flex justify-between">
+                    <span>Total Monthly Cost:</span>
+                    <span className="font-bold text-green-600 dark:text-green-400">${monthlyEstimate.cost.toFixed(2)}</span>
+                  </div>
+                  {monthlyEstimate.energy && (
+                    <div className="flex justify-between">
+                      <span>Total Monthly Energy:</span>
+                      <span className="font-bold text-green-600 dark:text-green-400">{monthlyEstimate.energy.toFixed(2)} kWh</span>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-green-300 dark:border-green-700">
+                    <div className="flex justify-between">
+                      <span>Estimated Annual Cost:</span>
+                      <span className="font-bold text-green-600 dark:text-green-400">
+                        {(() => {
+                          if (energyMode === "heating" && locationData) {
+                            // Use HDD-based scaling: Annual = (Monthly / Monthly HDD) * Annual HDD
+                            const monthlyHDD = getTypicalHDD(selectedMonth);
+                            const annualHDD = getAnnualHDD(locationData.city, locationData.state);
+                            if (monthlyHDD > 0 && annualHDD > 0) {
+                              const annualCost = (monthlyEstimate.cost / monthlyHDD) * annualHDD;
+                              return `$${annualCost.toFixed(2)}`;
+                            }
+                          }
+                          // Fallback: for cooling or if HDD data unavailable, show note
+                          return "N/A (see below)";
+                        })()}
+                      </span>
+                    </div>
+                    {energyMode === "heating" && locationData && (() => {
+                      const monthlyHDD = getTypicalHDD(selectedMonth);
+                      const annualHDD = getAnnualHDD(locationData.city, locationData.state);
+                      if (monthlyHDD > 0 && annualHDD > 0) {
+                        const annualCost = (monthlyEstimate.cost / monthlyHDD) * annualHDD;
+                        return (
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            = (${monthlyEstimate.cost.toFixed(2)} / {monthlyHDD} HDD) × {annualHDD} HDD
+                            <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 italic">
+                              * Scaled by degree days (not × 12 months)
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                    {energyMode === "cooling" && (
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        See degree-day calculation below
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Annual Cost Calculation Using Degree Days */}
+            {monthlyEstimate && energyMode === "heating" && locationData && (() => {
+              const monthlyHDD = getTypicalHDD(selectedMonth);
+              const annualHDD = getAnnualHDD(locationData.city, locationData.state);
+              
+              if (monthlyHDD > 0 && annualHDD > 0) {
+                // Calculate annual cost using degree-day scaling
+                // Annual = (Monthly Cost / Monthly HDD) × Annual HDD
+                const annualCost = (monthlyEstimate.cost / monthlyHDD) * annualHDD;
+                const monthlyRatio = monthlyHDD / annualHDD;
+                
+                return (
+                  <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                    <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Annual Heating Cost (Degree-Day Scaled)</h4>
+                    <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                      <div className="space-y-3">
+                        <div>
+                          <div className="font-semibold mb-2">Physics-Based Calculation:</div>
+                          <div className="space-y-1 pl-4">
+                            <div className="flex justify-between">
+                              <span>Selected Month ({activeMonths.find((m) => m.value === selectedMonth)?.label}):</span>
+                              <span className="font-bold text-purple-600 dark:text-purple-400">${monthlyEstimate.cost.toFixed(2)}</span>
+                            </div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400">
+                              From rigorous physics calculation above
+                            </div>
+                            <div className="flex justify-between pt-2">
+                              <span>Monthly HDD ({activeMonths.find((m) => m.value === selectedMonth)?.label}):</span>
+                              <span className="font-bold text-purple-600 dark:text-purple-400">{monthlyHDD} HDD</span>
+                            </div>
+                            <div className="flex justify-between pt-2">
+                              <span>Annual HDD ({locationData.city}, {locationData.state}):</span>
+                              <span className="font-bold text-purple-600 dark:text-purple-400">{annualHDD} HDD</span>
+                            </div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400 pt-1">
+                              {activeMonths.find((m) => m.value === selectedMonth)?.label} represents {(monthlyRatio * 100).toFixed(1)}% of annual heating load
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="pt-2 border-t-2 border-purple-400 dark:border-purple-600">
+                          <div className="flex justify-between">
+                            <span className="font-bold text-lg">Estimated Annual Cost:</span>
+                            <span className="font-bold text-lg text-purple-600 dark:text-purple-400">${annualCost.toFixed(2)}</span>
+                          </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                            = (${monthlyEstimate.cost.toFixed(2)} / {monthlyHDD} HDD) × {annualHDD} HDD
+                          </div>
+                          <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 italic">
+                            * Uses physics math scaled by degree days. Accounts for seasonal variation (summer bills are much lower than winter).
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              
+              return (
+                <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                  <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Annual Heating Cost</h4>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    HDD data not available for this location. Annual estimate requires location data.
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {energyMode === "cooling" && (
+              <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Annual Cooling Cost</h4>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Cooling cost calculations use CDD (Cooling Degree Days) methodology. See monthly estimates above for cooling months.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       </div>
     </div>

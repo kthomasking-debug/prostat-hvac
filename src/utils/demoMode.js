@@ -78,15 +78,15 @@ export async function loadDemoData() {
 }
 
 /**
- * Check if ProStat Bridge is available on local network
- * Scans for http://prostat.local
+ * Check if Joule Bridge is available on local network
+ * Scans for http://joule.local
  */
 export async function checkBridgePresence() {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
 
   try {
-    await fetch("http://prostat.local/health", {
+    await fetch("http://joule.local/health", {
       method: "GET",
       signal: controller.signal,
       mode: "no-cors", // CORS may fail, but we can detect network errors

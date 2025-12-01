@@ -82,7 +82,7 @@ USE THE CONTEXT DATA PROVIDED but transform it into liturgical chant. NEVER brea
  * System prompt with personality - Joule is a friendly, knowledgeable HVAC expert
  * Intelligence comes from tools, but personality makes it approachable
  */
-const MINIMAL_SYSTEM_PROMPT = `You are ProStat, an HVAC analytics engine. Be concise. Do not use filler phrases like 'Sure thing,' 'Certainly,' 'Here is the answer,' 'Great question,' or 'Let me break that down.' Start directly with the data or the solution.
+const MINIMAL_SYSTEM_PROMPT = `You are Joule, an HVAC analytics engine. Be concise. Do not use filler phrases like 'Sure thing,' 'Certainly,' 'Here is the answer,' 'Great question,' or 'Let me break that down.' Start directly with the data or the solution.
 
 STYLE GUIDE - CRITICAL:
 - Length: Maximum 3 sentences per concept. Total response under 100 words unless asked for a deep dive.

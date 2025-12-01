@@ -1,10 +1,10 @@
-# ProStat Bridge Setup Guide
+# Joule Bridge Setup Guide
 
 ## Overview
 
-The ProStat Bridge is a dedicated hardware device that enables **local-only** thermostat control using the HomeKit Accessory Protocol (HAP) over IP. It acts as a bridge between your web app and your HomeKit-compatible thermostat.
+The Joule Bridge is a dedicated hardware device that enables **local-only** thermostat control using the HomeKit Accessory Protocol (HAP) over IP. It acts as a bridge between your web app and your HomeKit-compatible thermostat.
 
-### Why ProStat Bridge?
+### Why Joule Bridge?
 
 - **⚡ Latency**: Milliseconds instead of 2-5 seconds (critical for short cycle protection)
 - **🔒 Reliability**: Works offline, no cloud dependencies
@@ -16,18 +16,25 @@ The ProStat Bridge is a dedicated hardware device that enables **local-only** th
 
 ```
 ┌─────────────┐         ┌──────────────┐         ┌──────────┐
-│  Web App    │────────▶│ ProStat Bridge│────────▶│  Ecobee  │
-│  (React)    │  HTTP   │  (Python)    │   HAP   │          │
-└─────────────┘         └──────────────┘         └──────────┘
-     │                          │
-     │                          │
-     └──────────────────────────┘
-        Local Network Only
+│  Browser    │────────▶│  Nginx       │────────▶│  Ecobee  │
+│  (Laptop)   │  HTTP   │  (Port 80)   │   HAP   │          │
+└─────────────┘         └──────┬───────┘         └──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  Joule Bridge       │
+                    │  (Python, Port 8080)│
+                    │  + React Dashboard  │
+                    └─────────────────────┘
+        All on Local Network (No Cloud Required)
 ```
+
+**Architecture Options:**
+- **Self-Hosted (Recommended)**: Dashboard runs on Bridge via Nginx. Everything local.
+- **Cloud-Hosted**: Dashboard on Netlify, connects to Bridge API. Requires internet.
 
 ## Hardware Requirements
 
-- **ProStat Bridge device** (based on Raspberry Pi Zero 2 W or compatible)
+- **Joule Bridge device** (based on Raspberry Pi Zero 2 W or compatible)
 - MicroSD card (8GB minimum, 16GB+ recommended, Class 10 or better)
 - Power supply (5V, 2.5A minimum, official power supply recommended)
 - Ethernet cable OR WiFi connection (WiFi built-in on most Bridge models)
@@ -39,7 +46,7 @@ The ProStat Bridge is a dedicated hardware device that enables **local-only** th
 ### Step 1: Flash the Bridge
 
 **What you'll need:**
-- ProStat Bridge device
+- Joule Bridge device
 - MicroSD card (8GB minimum, 16GB+ recommended)
 - Computer with SD card reader
 - USB power supply (5V, 2.5A)
@@ -134,14 +141,14 @@ sudo apt install -y python3 python3-pip python3-venv git curl
 python3 --version
 # Should show Python 3.x.x
 
-# Create directory for ProStat Bridge software
+# Create directory for Joule Bridge software
 cd ~
-mkdir prostat-bridge
-cd prostat-bridge
+mkdir joule-bridge
+cd joule-bridge
 
 # You'll need to copy server.py and requirements.txt here
 # Options:
-# 1. Use SCP from your computer: scp server.py requirements.txt pi@raspberrypi.local:~/prostat-bridge/
+# 1. Use SCP from your computer: scp server.py requirements.txt pi@raspberrypi.local:~/joule-bridge/
 # 2. Use git: git clone <repository-url>
 # 3. Create the files directly using nano: nano server.py
 ```
@@ -149,8 +156,8 @@ cd prostat-bridge
 ### Step 3: Install Python Dependencies
 
 ```bash
-# Make sure you're in the prostat-bridge directory
-cd ~/prostat-bridge
+# Make sure you're in the joule-bridge directory
+cd ~/joule-bridge
 
 # Create a virtual environment (recommended for isolation)
 python3 -m venv venv
@@ -182,8 +189,8 @@ pip list
 **Before running as a service, test it manually:**
 
 ```bash
-# Make sure you're in the prostat-bridge directory
-cd ~/prostat-bridge
+# Make sure you're in the joule-bridge directory
+cd ~/joule-bridge
 
 # Make sure virtual environment is activated
 source venv/bin/activate
@@ -194,9 +201,9 @@ python3 server.py
 
 **Expected output:**
 ```
-Starting ProStat Bridge...
+Starting Joule Bridge...
 HomeKit controller initialized
-ProStat Bridge listening on http://0.0.0.0:8080
+Joule Bridge listening on http://0.0.0.0:8080
 ```
 
 **Test the service:**
@@ -228,23 +235,23 @@ ProStat Bridge listening on http://0.0.0.0:8080
 
 ```bash
 # Create the service file
-sudo nano /etc/systemd/system/prostat-bridge.service
+sudo nano /etc/systemd/system/joule-bridge.service
 ```
 
 **Copy and paste this configuration:**
 ```ini
 [Unit]
-Description=ProStat Bridge HomeKit Controller
+Description=Joule Bridge HomeKit Controller
 After=network.target
 
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/prostat-bridge
-ExecStart=/home/pi/prostat-bridge/venv/bin/python3 /home/pi/prostat-bridge/server.py
+WorkingDirectory=/home/pi/joule-bridge
+ExecStart=/home/pi/joule-bridge/venv/bin/python3 /home/pi/joule-bridge/server.py
 Restart=always
 RestartSec=10
-Environment="PATH=/home/pi/prostat-bridge/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/home/pi/joule-bridge/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 [Install]
 WantedBy=multi-user.target
@@ -262,13 +269,13 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 
 # Enable the service to start on boot
-sudo systemctl enable prostat-bridge
+sudo systemctl enable joule-bridge
 
 # Start the service now
-sudo systemctl start prostat-bridge
+sudo systemctl start joule-bridge
 
 # Check the status
-sudo systemctl status prostat-bridge
+sudo systemctl status joule-bridge
 ```
 
 **Expected status output:**
@@ -278,14 +285,14 @@ sudo systemctl status prostat-bridge
 **View logs:**
 ```bash
 # View recent logs
-sudo journalctl -u prostat-bridge -n 50
+sudo journalctl -u joule-bridge -n 50
 
 # Follow logs in real-time
-sudo journalctl -u prostat-bridge -f
+sudo journalctl -u joule-bridge -f
 ```
 
 **If the service fails to start:**
-- Check logs: `sudo journalctl -u prostat-bridge -n 50`
+- Check logs: `sudo journalctl -u joule-bridge -n 50`
 - Verify file paths in the service file match your setup
 - Make sure the virtual environment path is correct
 - Test manually first (Step 4) to identify any errors
@@ -309,7 +316,7 @@ From your web app or via API:
 curl http://raspberrypi.local:8080/api/discover
 ```
 
-Or from the web app Settings → ProStat Bridge → Discover Devices
+Or from the web app Settings → Joule Bridge → Discover Devices
 
 This will list all HomeKit devices on your network, including your Ecobee.
 
@@ -317,7 +324,7 @@ This will list all HomeKit devices on your network, including your Ecobee.
 
 From the web app:
 
-1. Go to **Settings → ProStat Bridge**
+1. Go to **Settings → Joule Bridge**
 2. Click **"Discover Devices"**
 3. Find your Ecobee in the list
 4. Enter the 8-digit pairing code from your thermostat
@@ -344,15 +351,32 @@ Or check in the web app - you should see your thermostat listed.
 
 ## Web App Configuration
 
-### Set Bridge URL
+### Option 1: Self-Host Dashboard on Bridge (Recommended)
 
-1. Go to **Settings → ProStat Bridge**
+**Why self-host?**
+- ⚡ Instant speed (local network)
+- 🔒 Complete privacy (no cloud)
+- 🛡️ Works offline
+- 🎯 No mixed content issues (everything on same network)
+
+**Setup:**
+1. Follow the [Self-Hosting Guide](SELF-HOSTING-NGINX.md) to install Nginx on your Bridge
+2. Deploy the dashboard: `npm run deploy:pi`
+3. Access at: `http://joule.local` (or your Bridge's IP)
+
+### Option 2: Use Netlify (Cloud Hosting)
+
+If you prefer cloud hosting for the dashboard:
+
+1. Go to **Settings → Joule Bridge**
 2. Enter your Bridge's IP address or hostname:
    - `http://raspberrypi.local:8080` (if mDNS works)
    - `http://192.168.1.100:8080` (use your Bridge's IP)
 3. Click **"Save"**
 
-The web app will automatically detect and use ProStat Bridge when available.
+The web app will automatically detect and use Joule Bridge when available.
+
+**Note:** Self-hosting on the Bridge is recommended for the best experience and aligns with the "Sovereign / No Cloud" philosophy.
 
 ## Troubleshooting
 
@@ -381,15 +405,15 @@ The web app will automatically detect and use ProStat Bridge when available.
 2. Find your Ecobee thermostat
 3. Long-press the device → **Settings** → Scroll down → **Remove Accessory**
 4. Confirm removal
-5. Wait 30 seconds, then try pairing with ProStat Bridge again
+5. Wait 30 seconds, then try pairing with Joule Bridge again
 
 **Other Solutions**:
 
 - Verify the pairing code is correct (8 digits, format XXX-XX-XXX)
 - Ensure the Ecobee is in pairing mode (code displayed on thermostat screen)
 - Check that no other HomeKit controller is already paired
-- Check logs: `journalctl -u prostat-bridge -f`
-- Try rebooting the Bridge: `sudo systemctl restart prostat-bridge`
+- Check logs: `journalctl -u joule-bridge -f`
+- Try rebooting the Bridge: `sudo systemctl restart joule-bridge`
 
 ### Connection Drops
 
@@ -399,8 +423,8 @@ The web app will automatically detect and use ProStat Bridge when available.
 
 - Check network connectivity: `ping ecobee-ip`
 - Verify the Bridge has a stable IP address (consider static IP)
-- Check logs: `journalctl -u prostat-bridge -f`
-- Restart service: `sudo systemctl restart prostat-bridge`
+- Check logs: `journalctl -u joule-bridge -f`
+- Restart service: `sudo systemctl restart joule-bridge`
 - Verify pairing is still valid: `curl http://localhost:8080/api/paired`
 
 ### Service Won't Start
@@ -409,7 +433,7 @@ The web app will automatically detect and use ProStat Bridge when available.
 
 **Solutions**:
 
-- Check logs: `journalctl -u prostat-bridge -n 50`
+- Check logs: `journalctl -u joule-bridge -n 50`
 - Verify Python path in service file
 - Check virtual environment is activated correctly
 - Verify dependencies: `pip list | grep aiohomekit`
@@ -422,7 +446,7 @@ The web app will automatically detect and use ProStat Bridge when available.
 **Solutions**:
 
 - Verify Bridge is running: `ssh pi@raspberrypi.local`
-- Check service is running: `sudo systemctl status prostat-bridge`
+- Check service is running: `sudo systemctl status joule-bridge`
 - Test health endpoint: `curl http://raspberrypi.local:8080/health`
 - Verify URL in web app settings
 - Check CORS is enabled (should be automatic)
@@ -489,7 +513,7 @@ The bridge supports multiple paired devices. Use `device_id` parameter in API ca
 ## Next Steps
 
 1. ✅ Pair your Ecobee
-2. ✅ Configure web app to use ProStat Bridge
+2. ✅ Configure web app to use Joule Bridge
 3. ✅ Test temperature control
 4. ✅ Test mode changes (heat/cool/off)
 5. ✅ Implement short cycle protection
@@ -500,7 +524,7 @@ The bridge supports multiple paired devices. Use `device_id` parameter in API ca
 
 For issues or questions:
 
-- Check logs: `journalctl -u prostat-bridge -f`
+- Check logs: `journalctl -u joule-bridge -f`
 - Review this guide
 - Check GitHub issues (if applicable)
 - Test API endpoints directly with `curl`
@@ -510,8 +534,8 @@ For issues or questions:
 If you were using the Ecobee Cloud API:
 
 1. **Unpair from Ecobee Cloud** (optional, but recommended)
-2. **Set up ProStat Bridge** (this guide)
+2. **Set up Joule Bridge** (this guide)
 3. **Pair via HomeKit** (pairing process above)
-4. **Update web app settings** to use ProStat Bridge URL
+4. **Update web app settings** to use Joule Bridge URL
 
-The web app will automatically prefer ProStat Bridge over Ecobee Cloud API when both are available.
+The web app will automatically prefer Joule Bridge over Ecobee Cloud API when both are available.

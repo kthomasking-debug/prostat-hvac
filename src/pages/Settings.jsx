@@ -43,7 +43,7 @@ import {
 } from "../lib/userImages";
 import ThermostatSettingsPanel from "../components/ThermostatSettingsPanel";
 import EcobeeSettings from "../components/EcobeeSettings";
-import ProstatBridgeSettings from "../components/ProstatBridgeSettings";
+import JouleBridgeSettings from "../components/JouleBridgeSettings";
 import { setProCode, clearProCode, hasProAccess } from "../utils/demoMode";
 
 const Section = ({ title, icon, children, ...props }) => (
@@ -158,7 +158,7 @@ const ProCodeInput = () => {
                 Pro Access Active
               </div>
               <div className="text-xs text-green-700 dark:text-green-300">
-                Unlocked via {proAccess.source === 'bridge' ? 'ProStat Bridge hardware' : 'Pro code'}
+                Unlocked via {proAccess.source === 'bridge' ? 'Joule Bridge hardware' : 'Pro code'}
               </div>
             </div>
           </div>
@@ -586,7 +586,7 @@ const LocalLLMSettings = () => {
   });
   const [bridgeUrl, setBridgeUrl] = useState(() => {
     try {
-      return localStorage.getItem("prostatBridgeUrl") || "http://localhost:8080";
+      return localStorage.getItem("jouleBridgeUrl") || "http://localhost:8080";
     } catch {
       return "http://localhost:8080";
     }
@@ -652,7 +652,7 @@ const LocalLLMSettings = () => {
     const val = e.target.value.trim();
     setBridgeUrl(val);
     try {
-      localStorage.setItem("prostatBridgeUrl", val);
+      localStorage.setItem("jouleBridgeUrl", val);
     } catch {}
   };
 
@@ -669,10 +669,10 @@ const LocalLLMSettings = () => {
       <div className="flex items-center justify-between">
         <div>
           <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-            Use Local LLM (ProStat Bridge/Core)
+            Use Local LLM (Joule Bridge/Core)
           </label>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            Run LLM locally on your ProStat Bridge or Core instead of using Groq API. Requires Ollama installed.
+            Run LLM locally on your Joule Bridge or Core instead of using Groq API. Requires Ollama installed.
           </p>
         </div>
         <label className="inline-flex items-center gap-3">
@@ -689,7 +689,7 @@ const LocalLLMSettings = () => {
         <>
           <div>
             <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-              ProStat Bridge URL
+              Joule Bridge URL
             </label>
             <input
               type="text"
@@ -697,10 +697,10 @@ const LocalLLMSettings = () => {
               onChange={handleBridgeUrlChange}
               placeholder="http://localhost:8080"
               className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              aria-label="ProStat Bridge URL"
+              aria-label="Joule Bridge URL"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              URL of your ProStat Bridge or Core running the service
+              URL of your Joule Bridge or Core running the service
             </p>
           </div>
 
@@ -762,7 +762,7 @@ const LocalLLMSettings = () => {
           <li>No vendor lock-in</li>
         </ul>
         <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-          📖 See <a href="/docs/LOCAL-LLM-RASPBERRY-PI.md" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 underline">setup guide</a> for installation instructions on your ProStat Bridge or Core.
+          📖 See <a href="/docs/LOCAL-LLM-RASPBERRY-PI.md" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 underline">setup guide</a> for installation instructions on your Joule Bridge or Core.
         </p>
       </div>
     </div>
@@ -1156,13 +1156,47 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
           </label>
           <input
             type="number"
+            min={100}
+            max={50000}
+            step={1}
+            placeholder="Enter square footage"
             value={settings.squareFeet ?? 2000}
-            onChange={(e) =>
-              onSettingChange("squareFeet", Number(e.target.value))
-            }
+            onChange={(e) => {
+              const val = e.target.value;
+              // Allow empty input while typing
+              if (val === "" || val === "-") {
+                onSettingChange("squareFeet", null);
+                return;
+              }
+              const numVal = Number(val);
+              if (!isNaN(numVal) && numVal >= 100 && numVal <= 50000) {
+                onSettingChange("squareFeet", Math.round(numVal));
+              }
+            }}
+            onBlur={(e) => {
+              // Ensure we have a valid value on blur
+              const val = e.target.value.trim();
+              if (val === "" || val === "-" || isNaN(Number(val))) {
+                onSettingChange("squareFeet", settings.squareFeet ?? 2000);
+              } else {
+                const numVal = Number(val);
+                if (numVal < 100) {
+                  onSettingChange("squareFeet", 100);
+                } else if (numVal > 50000) {
+                  onSettingChange("squareFeet", 50000);
+                } else {
+                  onSettingChange("squareFeet", Math.round(numVal));
+                }
+              }
+            }}
             className={fullInputClasses}
             disabled={settings.useManualHeatLoss}
           />
+          {settings.useManualHeatLoss && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Disabled when using manual heat loss entry
+            </p>
+          )}
         </div>
         <div>
           <label className="block text-xs font-semibold mb-1 text-gray-600 dark:text-gray-300">
@@ -1286,7 +1320,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
               <input
                 type="checkbox"
                 className="h-4 w-4"
-                checked={!!settings.useCalculatedHeatLoss}
+                checked={!!settings.useCalculatedHeatLoss || (!settings.useManualHeatLoss && !settings.useAnalyzerHeatLoss)}
                 onChange={(e) => {
                   const checked = e.target.checked;
                   if (checked) {
@@ -1299,7 +1333,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                     onSettingChange("useCalculatedHeatLoss", false);
                     if (settings.useManualHeatLoss) {
                       onSettingChange("useManualHeatLoss", true);
-                    } else {
+                    } else if (outletContext?.heatLossFactor) {
                       onSettingChange("useAnalyzerHeatLoss", true);
                     }
                   }
@@ -1308,12 +1342,12 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             </label>
             <div className="flex-1">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Calculated (Department of Energy Data)
+                Calculated (Department of Energy Data) - Recommended
               </label>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Based on square footage, insulation, home shape, and ceiling height
+                Based on square footage, insulation, home shape, and ceiling height. This is the default method and works well for most homes.
               </p>
-              {settings.useCalculatedHeatLoss && (
+              {(settings.useCalculatedHeatLoss || (!settings.useManualHeatLoss && !settings.useAnalyzerHeatLoss)) && (
                 <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 font-mono">
                   Current value: {calculatedHeatLossFactor.toLocaleString()} BTU/hr/°F
                   {calculatedHeatLossFactor > 0 && (
@@ -1341,7 +1375,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                     onSettingChange("useCalculatedHeatLoss", false);
                     onSettingChange("useAnalyzerHeatLoss", true);
                   } else {
-                    // If unchecking, default to calculated
+                    // If unchecking CSV, default to DOE calculated data
                     onSettingChange("useAnalyzerHeatLoss", false);
                     onSettingChange("useCalculatedHeatLoss", true);
                   }
@@ -1350,16 +1384,21 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             </label>
             <div className="flex-1">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Analyzer Data (CSV Import)
+                Analyzer Data (CSV Import) - Optional
               </label>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                From System Performance Analyzer CSV file upload
+                From System Performance Analyzer CSV file upload. If unchecked, will use DOE calculated data instead.
               </p>
               {settings.useAnalyzerHeatLoss && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
                   {outletContext?.heatLossFactor 
                     ? `Current value: ${Number(outletContext.heatLossFactor).toFixed(1)} BTU/hr/°F`
                     : "No analyzer data available. Upload CSV in System Performance Analyzer first."}
+                </p>
+              )}
+              {!settings.useAnalyzerHeatLoss && outletContext?.heatLossFactor && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
+                  CSV data available but not active. Using DOE calculated data instead.
                 </p>
               )}
             </div>
@@ -1669,7 +1708,7 @@ const SettingsPage = () => {
     });
 
   return (
-    <div className="page-gradient-overlay min-h-screen">
+    <div className="page-gradient-overlay">
       <div className="settings-page p-4 md:p-6 space-y-6 max-w-6xl mx-auto">
         <header className="flex justify-between items-center mb-8 animate-fade-in-up">
           <div className="flex items-center gap-4">
@@ -1690,7 +1729,7 @@ const SettingsPage = () => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Crown className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white">ProStat Product Tiers</h3>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Joule Product Tiers</h3>
           </div>
           <Link
             to="/hardware"
@@ -1751,7 +1790,7 @@ const SettingsPage = () => {
                 <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">/year</span>
               </div>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">ProStat Monitor</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">Joule Monitor</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Annual subscription • Automatic cloud monitoring</p>
             <ul className="space-y-2 text-sm flex-grow mb-4">
               <li className="flex items-start gap-2">
@@ -1794,7 +1833,7 @@ const SettingsPage = () => {
               <h4 className="font-bold text-lg text-gray-900 dark:text-white">Bridge</h4>
               <span className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 leading-tight whitespace-nowrap">$129</span>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">ProStat Bridge</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">Joule Bridge</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">One-time purchase • Complete control & sovereignty</p>
             <ul className="space-y-2 text-sm flex-grow mb-4">
               <li className="flex items-start gap-2">
@@ -1803,7 +1842,7 @@ const SettingsPage = () => {
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">ProStat Bridge hardware included (pre-configured dedicated logic controller)</span>
+                <span className="text-gray-700 dark:text-gray-300">Joule Bridge hardware included (pre-configured dedicated logic controller)</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
@@ -1856,9 +1895,9 @@ const SettingsPage = () => {
         <ThermostatSettingsPanel />
       </Section>
 
-      {/* ProStat Bridge (HomeKit HAP) - Preferred */}
-      <Section title="ProStat Bridge (Local HomeKit)" icon={<ThermometerSun size={20} />}>
-        <ProstatBridgeSettings />
+      {/* Joule Bridge (HomeKit HAP) - Preferred */}
+      <Section title="Joule Bridge (Local HomeKit)" icon={<ThermometerSun size={20} />}>
+        <JouleBridgeSettings />
       </Section>
 
       {/* Ecobee Cloud API (Fallback) */}
@@ -1894,7 +1933,7 @@ const SettingsPage = () => {
 
         {advancedSettingsExpanded && (
           <div className="p-glass border-t border-gray-200 dark:border-gray-700 space-y-6">
-            <Section title="Local LLM (ProStat Bridge/Core)" icon={<Server size={20} />}>
+            <Section title="Local LLM (Joule Bridge/Core)" icon={<Server size={20} />}>
               <LocalLLMSettings />
             </Section>
 
@@ -1935,6 +1974,23 @@ const SettingsPage = () => {
                   />
                 </label>
               </div>
+            </div>
+
+            {/* Documentation Link */}
+            <div className="mb-4">
+              <Link
+                to="/hardware"
+                className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                  View Setup Documentation & Guides
+                </span>
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 ml-6">
+                Step-by-step instructions for flashing the Bridge and setting it up
+              </p>
             </div>
 
             {/* Byzantine Mode Easter Egg 🕯️ */}

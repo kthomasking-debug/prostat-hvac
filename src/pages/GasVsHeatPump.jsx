@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Zap, MapPin, Info, Flame, Home, TrendingUp, AlertCircle } from 'lucide-react';
+import { Zap, MapPin, Info, Flame, Home, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Calculator } from 'lucide-react';
 import { inputClasses, fullInputClasses, selectClasses } from '../lib/uiClasses';
 import { DashboardLink } from '../components/DashboardLink';
 import { fetchGeocodeCandidates, chooseBestCandidate, reverseGeocode } from '../utils/geocode';
 import { fetchStateAverageGasPrice } from '../lib/eia';
+import { getDefrostPenalty } from '../lib/heatUtils';
 
 const GasVsHeatPump = () => {
   const EXTREME_COLD_F = 0; // Default threshold for extreme cold advisory
@@ -75,6 +76,7 @@ const GasVsHeatPump = () => {
   const [geocodeCandidates, setGeocodeCandidates] = useState([]);
   const [showCandidateList, setShowCandidateList] = useState(false);
   const [lowHeatLossWarning, setLowHeatLossWarning] = useState(false);
+  const [showCalculations, setShowCalculations] = useState(false);
 
   // Basic US state abbreviation to name mapping for better geocoding disambiguation
   const STATE_ABBR = useMemo(() => ({
@@ -122,11 +124,8 @@ const GasVsHeatPump = () => {
     const powerFactor = 1 / Math.max(0.7, capacityFactor);
     const baseElectricalKw = compressorPower * powerFactor;
 
-    let defrostPenalty = 1.0;
-    const humidityRatio = humidity / 100;
-    if (outdoorTemp > 20 && outdoorTemp < 45) {
-      defrostPenalty = 1 + (0.15 * humidityRatio);
-    }
+    // Use centralized defrost penalty calculation
+    const defrostPenalty = getDefrostPenalty(outdoorTemp, humidity);
     const electricalKw = baseElectricalKw * defrostPenalty;
 
     const heatpumpOutputBtu = (tons * 3.517 * capacityFactor) * 3412.14;
@@ -812,6 +811,256 @@ const GasVsHeatPump = () => {
           </div>
         </div>
       )}
+
+      {/* Live Math Calculations Pulldown */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button
+          onClick={() => setShowCalculations(!showCalculations)}
+          className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+              <Calculator size={24} className="text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
+          </div>
+          {showCalculations ? (
+            <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+          ) : (
+            <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+          )}
+        </button>
+
+        {showCalculations && (
+          <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+            {/* Building Heat Loss Calculation */}
+            <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Building Heat Loss</h4>
+              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                <div className="flex justify-between">
+                  <span>Base BTU/sq ft:</span>
+                  <span className="font-bold">22.67 BTU/hr/°F per sq ft</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Square Feet:</span>
+                  <span className="font-bold">{squareFeet.toLocaleString()} sq ft</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Insulation Factor:</span>
+                  <span className="font-bold">{insulationLevel.toFixed(2)}x</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Home Shape Factor:</span>
+                  <span className="font-bold">{homeShape.toFixed(2)}x</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Ceiling Height Multiplier:</span>
+                  <span className="font-bold">{(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}x</span>
+                </div>
+                <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
+                  <div className="flex justify-between">
+                    <span>Total Heat Loss @ 70°F ΔT:</span>
+                    <span className="font-bold text-blue-600 dark:text-blue-400">{heatLoss.toLocaleString()} BTU/hr</span>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    = {squareFeet.toLocaleString()} × 22.67 × {insulationLevel.toFixed(2)} × {homeShape.toFixed(2)} × {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <div className="flex justify-between">
+                    <span>BTU Loss per °F:</span>
+                    <span className="font-bold text-blue-600 dark:text-blue-400">{(heatLoss / 70).toFixed(1)} BTU/hr/°F</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Heat Pump Calculations */}
+            <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
+              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Heat Pump System</h4>
+              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                <div className="flex justify-between">
+                  <span>Capacity:</span>
+                  <span className="font-bold">{capacity}k BTU ({tons} tons)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>SEER2:</span>
+                  <span className="font-bold">{efficiency}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Compressor Power:</span>
+                  <span className="font-bold">{(compressorPower).toFixed(2)} kW</span>
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">
+                  = {tons} tons × 1.0 × (15 / {efficiency})
+                </div>
+                <div className="pt-2 border-t border-indigo-300 dark:border-indigo-700">
+                  <div className="font-semibold mb-2">Performance at 35°F (example):</div>
+                  {(() => {
+                    const exampleTemp = 35;
+                    const exampleHumidity = 50;
+                    const examplePerf = getPerformanceAtTemp(exampleTemp, exampleHumidity);
+                    // Match the exact logic from getPerformanceAtTemp
+                    let capacityFactor = 1.0;
+                    if (exampleTemp < 47) capacityFactor = 1.0 - (47 - exampleTemp) * 0.01;
+                    if (exampleTemp < 17) capacityFactor = 0.70 - (17 - exampleTemp) * 0.0074;
+                    const capacityFactorClamped = Math.max(0.3, capacityFactor);
+                    const powerFactor = 1 / Math.max(0.7, capacityFactorClamped);
+                    const baseKw = compressorPower * powerFactor;
+                    const defrostPenalty = getDefrostPenalty(exampleTemp, exampleHumidity);
+                    const electricalKw = baseKw * defrostPenalty;
+                    const heatpumpOutputBtu = (tons * 3.517 * capacityFactorClamped) * 3412.14;
+                    const tempDiff = Math.max(1, indoorTemp - exampleTemp);
+                    const buildingHeatLossBtu = (heatLoss / 70) * tempDiff;
+                    const runtime = heatpumpOutputBtu > 0 ? (buildingHeatLossBtu / heatpumpOutputBtu) * 100 : 100;
+                    const runtimeClamped = Math.min(100, Math.max(0, runtime));
+                    return (
+                      <>
+                        <div className="flex justify-between">
+                          <span>Capacity Factor:</span>
+                          <span className="font-bold text-indigo-600 dark:text-indigo-400">{capacityFactorClamped.toFixed(3)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Power Factor:</span>
+                          <span className="font-bold">{powerFactor.toFixed(3)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Defrost Penalty:</span>
+                          <span className="font-bold">{defrostPenalty.toFixed(3)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Electrical Power:</span>
+                          <span className="font-bold text-indigo-600 dark:text-indigo-400">{electricalKw.toFixed(2)} kW</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Heat Output:</span>
+                          <span className="font-bold text-indigo-600 dark:text-indigo-400">{(heatpumpOutputBtu / 1000).toFixed(0)}k BTU/hr</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Building Heat Loss:</span>
+                          <span className="font-bold">{(buildingHeatLossBtu / 1000).toFixed(0)}k BTU/hr</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Runtime:</span>
+                          <span className="font-bold text-indigo-600 dark:text-indigo-400">{runtimeClamped.toFixed(1)}%</span>
+                        </div>
+                        <div className="pt-2 border-t border-indigo-300 dark:border-indigo-700">
+                          <div className="flex justify-between">
+                            <span>Hourly Cost @ {runtimeClamped.toFixed(1)}%:</span>
+                            <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                              ${(electricalKw * (runtimeClamped / 100) * utilityCost).toFixed(3)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            = {electricalKw.toFixed(2)} kW × ({runtimeClamped.toFixed(1)}% / 100) × ${utilityCost.toFixed(2)}/kWh
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            {/* Gas Furnace Calculations */}
+            <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Gas Furnace System</h4>
+              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                <div className="flex justify-between">
+                  <span>AFUE:</span>
+                  <span className="font-bold">{(gasFurnaceAFUE * 100).toFixed(0)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Gas Cost:</span>
+                  <span className="font-bold">${gasCostPerTherm.toFixed(2)} / therm</span>
+                </div>
+                <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
+                  <div className="font-semibold mb-2">Performance at 35°F (example):</div>
+                  {(() => {
+                    const exampleTemp = 35;
+                    const examplePerf = getPerformanceAtTemp(exampleTemp, 50);
+                    const tempDiff = Math.max(1, indoorTemp - exampleTemp);
+                    const buildingHeatLossBtu = (heatLoss / 70) * tempDiff;
+                    const gasEnergyInputBtu = buildingHeatLossBtu / gasFurnaceAFUE;
+                    const thermsUsed = gasEnergyInputBtu / 100000;
+                    const gasCostForHour = thermsUsed * gasCostPerTherm;
+                    return (
+                      <>
+                        <div className="flex justify-between">
+                          <span>Building Heat Loss:</span>
+                          <span className="font-bold">{(buildingHeatLossBtu / 1000).toFixed(0)}k BTU/hr</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Gas Energy Input:</span>
+                          <span className="font-bold text-orange-600 dark:text-orange-400">{(gasEnergyInputBtu / 1000).toFixed(0)}k BTU/hr</span>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          = {(buildingHeatLossBtu / 1000).toFixed(0)}k ÷ {(gasFurnaceAFUE * 100).toFixed(0)}%
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Therms per Hour:</span>
+                          <span className="font-bold text-orange-600 dark:text-orange-400">{thermsUsed.toFixed(4)}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          = {(gasEnergyInputBtu / 1000).toFixed(0)}k ÷ 100,000
+                        </div>
+                        <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
+                          <div className="flex justify-between">
+                            <span>Hourly Cost:</span>
+                            <span className="font-bold text-orange-600 dark:text-orange-400">${gasCostForHour.toFixed(3)}</span>
+                          </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            = {thermsUsed.toFixed(4)} therms × ${gasCostPerTherm.toFixed(2)}/therm
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            {/* Weekly Summary Calculations */}
+            {weeklyMetrics && (
+              <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Weekly Summary</h4>
+                <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                  <div className="flex justify-between">
+                    <span>Total HP Cost (7 days):</span>
+                    <span className="font-bold text-green-600 dark:text-green-400">${weeklyMetrics.totalHPCost.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Gas Cost (7 days):</span>
+                    <span className="font-bold text-green-600 dark:text-green-400">${weeklyMetrics.totalGasCost.toFixed(2)}</span>
+                  </div>
+                  <div className="pt-2 border-t border-green-300 dark:border-green-700">
+                    <div className="flex justify-between">
+                      <span>Weekly Savings:</span>
+                      <span className={`font-bold ${weeklyMetrics.totalSavings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        ${weeklyMetrics.totalSavings.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                      = ${weeklyMetrics.totalGasCost.toFixed(2)} - ${weeklyMetrics.totalHPCost.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="pt-2">
+                    <div className="flex justify-between">
+                      <span>Estimated Annual Savings:</span>
+                      <span className={`font-bold ${weeklyMetrics.estimatedAnnualSavings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        ${weeklyMetrics.estimatedAnnualSavings.toFixed(0)}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                      = ${weeklyMetrics.totalSavings.toFixed(2)} × 26 heating weeks/year
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* State Picker Modal for EIA Gas Price Fetch */}
       {showStatePickerModal && (

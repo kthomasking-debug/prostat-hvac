@@ -20,6 +20,9 @@ import {
   Cpu,
   Sparkles,
   AlertCircle,
+  Calculator,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import AskJoule from "../components/AskJoule";
 import DemoModeBanner from "../components/DemoModeBanner";
@@ -46,6 +49,7 @@ const currency = (v) => `$${(v ?? 0).toFixed(2)}`;
 
 const HomeDashboard = () => {
   const [showHeatLossTooltip, setShowHeatLossTooltip] = React.useState(false);
+  const [showCalculations, setShowCalculations] = React.useState(false);
 
   const lastForecast = useMemo(
     () => safeParse("last_forecast_summary", null),
@@ -579,7 +583,7 @@ const HomeDashboard = () => {
                   <div className="flex items-center gap-3">
                     <Cpu className="w-6 h-6 text-violet-500" />
                     <div>
-                      <div className="font-semibold text-high-contrast">ProStat Bridge</div>
+                      <div className="font-semibold text-high-contrast">Joule Bridge</div>
                       <div className="text-xs text-muted">Raspberry Pi Zero 2 W</div>
                     </div>
                   </div>
@@ -1346,6 +1350,82 @@ const HomeDashboard = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Live Math Calculations Pulldown - For Nerds */}
+      {annualEstimate && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-8">
+          <button
+            onClick={() => setShowCalculations(!showCalculations)}
+            className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                <Calculator size={24} className="text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
+            </div>
+            {showCalculations ? (
+              <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+            ) : (
+              <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+            )}
+          </button>
+
+          {showCalculations && (
+            <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+              {/* Annual Cost Calculation */}
+              <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Annual Cost Calculation</h4>
+                <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                  <div>
+                    <span className="font-semibold">Method:</span> {annualEstimate.method === "fullPrecision" ? "Full Precision (hourly simulation)" : annualEstimate.method === "detailed" ? "Detailed (monthly with HDD/CDD)" : "Quick Estimate"}
+                  </div>
+                  {annualEstimate.hdd && (
+                    <div>
+                      <span className="font-semibold">Annual Heating Degree Days (HDD):</span>
+                      <div className="ml-4 mt-1 text-blue-600 dark:text-blue-400 font-bold">
+                        {annualEstimate.hdd.toLocaleString()} HDD
+                      </div>
+                    </div>
+                  )}
+                  {annualEstimate.cdd && (
+                    <div>
+                      <span className="font-semibold">Annual Cooling Degree Days (CDD):</span>
+                      <div className="ml-4 mt-1 text-blue-600 dark:text-blue-400 font-bold">
+                        {annualEstimate.cdd.toLocaleString()} CDD
+                      </div>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
+                    <div className="flex justify-between">
+                      <span>Annual Heating Cost:</span>
+                      <span className="font-bold text-blue-600 dark:text-blue-400">{currency(annualEstimate.heatingCost)}</span>
+                    </div>
+                    <div className="flex justify-between pt-2">
+                      <span>Annual Cooling Cost:</span>
+                      <span className="font-bold text-blue-600 dark:text-blue-400">{currency(annualEstimate.coolingCost)}</span>
+                    </div>
+                    <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
+                      <div className="flex justify-between">
+                        <span>Total Annual Cost:</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400">{currency(annualEstimate.totalCost)}</span>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        = {currency(annualEstimate.heatingCost)} (heating) + {currency(annualEstimate.coolingCost)} (cooling)
+                      </div>
+                    </div>
+                  </div>
+                  {annualEstimate.isEstimated && (
+                    <div className="pt-2 border-t border-blue-300 dark:border-blue-700 text-xs text-gray-600 dark:text-gray-400">
+                      ⚠️ This is an estimate based on 30-year historical climate averages. Actual costs will vary with real-time weather.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>
