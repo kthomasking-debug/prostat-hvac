@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import legacy from "@vitejs/plugin-legacy";
+import path from "path";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -8,6 +9,13 @@ export default defineConfig({
   // - GitHub Pages: set VITE_BASE_PATH=/engineering-tools/ (or your repo name)
   // - Netlify/Vercel: set VITE_BASE_PATH=/ or leave unset (defaults to /)
   base: process.env.VITE_BASE_PATH || "/",
+  resolve: {
+    alias: {
+      // Ensure only one React instance is used across the app
+      react: path.resolve(__dirname, "./node_modules/react"),
+      "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
+    },
+  },
   plugins: [
     react(),
     legacy({
@@ -27,17 +35,28 @@ export default defineConfig({
     // Target ES5 for maximum compatibility with Android 4.4 KitKat
     target: "es5",
     chunkSizeWarningLimit: 1500,
+    commonjsOptions: {
+      // Ensure React is treated as a CommonJS module correctly
+      include: [/node_modules/],
+      transformMixedEsModules: true,
+    },
     rollupOptions: {
       output: {
+        // Ensure React chunks are loaded in the correct order
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
         // Manual chunk splitting for better caching and parallel loading
         manualChunks: (id) => {
           // Split large vendor libraries into separate chunks
           if (id.includes('node_modules')) {
             // React and React DOM together (frequently used together)
-            if (id.includes('react') || id.includes('react-dom')) {
+            // Be specific: only match exact 'react' and 'react-dom', not 'react-router' or other react-* packages
+            if (id.includes('/react/') || id.includes('/react-dom/') || 
+                id.includes('\\react\\') || id.includes('\\react-dom\\')) {
               return 'react-vendor';
             }
-            // Router
+            // Router (must come after React check to avoid conflicts)
             if (id.includes('react-router')) {
               return 'router';
             }
