@@ -153,14 +153,14 @@ const SmartThermostatDemo = () => {
     }
   }, [userSettings.winterThermostat]);
   
-  // ProStat Bridge (HomeKit HAP) - Preferred method
+  // Joule Bridge (HomeKit HAP) - Preferred method
   const [bridgeAvailable, setBridgeAvailable] = useState(false);
   const jouleBridge = useJouleBridge(null, 5000); // Poll every 5 seconds (faster than cloud)
   
-  // ProStat Bridge Relay Control (Dehumidifier)
+  // Joule Bridge Relay Control (Dehumidifier)
   const prostatRelay = useProstatRelay(2, 5000); // Channel 2 (Y2 terminal), poll every 5 seconds
   
-  // ProStat Bridge Blueair Control (Air Purifier)
+  // Joule Bridge Blueair Control (Air Purifier)
   const _blueair = useBlueair(0, 10000); // Device 0, poll every 10 seconds
   
   // Ecobee Cloud API (fallback)
@@ -174,11 +174,11 @@ const SmartThermostatDemo = () => {
   const [simulatedMode, setSimulatedMode] = useState("heat");
   const [simulatedIsAway, setSimulatedIsAway] = useState(false);
   
-  // Determine which integration to use (ProStat Bridge preferred)
+  // Determine which integration to use (Joule Bridge preferred)
   const useJouleIntegration = bridgeAvailable && jouleBridge.connected;
   const activeIntegration = useJouleIntegration ? jouleBridge : (useEcobeeIntegration ? ecobee : null);
   
-  // Use ProStat Bridge or Ecobee data if available, otherwise use simulated
+  // Use Joule Bridge or Ecobee data if available, otherwise use simulated
   const currentTemp = activeIntegration && activeIntegration.temperature !== null 
     ? activeIntegration.temperature 
     : simulatedCurrentTemp;
@@ -705,7 +705,7 @@ const SmartThermostatDemo = () => {
     }
   }, [desiredDehumidifierState, dehumidifierState, dehumidifierSettings]);
 
-  // Control ProStat Bridge relay when dehumidifier state changes
+  // Control Joule Bridge relay when dehumidifier state changes
   useEffect(() => {
     if (bridgeAvailable && prostatRelay.connected && dehumidifierSettings.enabled) {
       // Sync dehumidifier state with relay
@@ -1124,21 +1124,21 @@ const SmartThermostatDemo = () => {
               <span className="text-muted">Location: <span className="text-high-contrast">{locationDisplay}</span></span>
               <span className="text-muted">AI Model: <span className="text-cyan-500">{groqModel}</span></span>
               <span className="text-green-500">● AI Mode Active</span>
-              {useProstatIntegration && (
+              {useJouleIntegration && (
                 <span className="text-muted">
                   Bridge: <span className={jouleBridge.connected ? "text-green-500" : "text-red-500"}>
                     {jouleBridge.connected ? "Connected" : "Disconnected"}
                   </span>
                 </span>
               )}
-              {useEcobeeIntegration && !useProstatIntegration && (
+              {useEcobeeIntegration && !useJouleIntegration && (
                 <span className="text-muted">
                   Ecobee: <span className={ecobee.connected ? "text-green-500" : "text-red-500"}>
                     {ecobee.connected ? "Connected" : "Disconnected"}
                   </span>
                 </span>
               )}
-              {!useProstatIntegration && !useEcobeeIntegration && (
+              {!useJouleIntegration && !useEcobeeIntegration && (
                 <span className="text-muted">Mode: <span className="text-high-contrast">Manual</span></span>
               )}
             </div>
